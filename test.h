@@ -14,9 +14,9 @@
 #define E801    0x04
 #define E820NR  0x08           /* # entries in E820MAP */
 #define E820MAP 0x0c           /* our map */
-#define E820MAX 32             /* number of entries in E820MAP */
+#define E820MAX 64             /* number of entries in E820MAP */
 #define E820ENTRY_SIZE 20
-#define MEMINFO_SIZE 0x28c
+#define MEMINFO_SIZE (E820MAP + E820MAX * E820ENTRY_SIZE)
 #define MAX_DMI_MEMDEVS 16
 
 #ifndef __ASSEMBLY__
@@ -269,6 +269,22 @@ struct cpu_ident {
 	long pwrcap;
 	long ext;
 	long feature_flag;
+	long dcache0_eax;
+	long dcache0_ebx;
+	long dcache0_ecx;
+	long dcache0_edx;
+	long dcache1_eax;
+	long dcache1_ebx;
+	long dcache1_ecx;
+	long dcache1_edx;	
+	long dcache2_eax;
+	long dcache2_ebx;
+	long dcache2_ecx;
+	long dcache2_edx;	
+	long dcache3_eax;
+	long dcache3_ebx;
+	long dcache3_ecx;
+	long dcache3_edx;
 };
 
 struct xadr {

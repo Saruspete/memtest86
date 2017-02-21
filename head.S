@@ -31,6 +31,22 @@
 #define X86_PWRCAP 40
 #define X86_EXT	44
 #define X86_FFL	48
+#define X86_DCACHE0_EAX	52
+#define X86_DCACHE0_EBX	56
+#define X86_DCACHE0_ECX	60
+#define X86_DCACHE0_EDX	64
+#define X86_DCACHE1_EAX	68
+#define X86_DCACHE1_EBX	72
+#define X86_DCACHE1_ECX	76
+#define X86_DCACHE1_EDX	80
+#define X86_DCACHE2_EAX	84
+#define X86_DCACHE2_EBX	88
+#define X86_DCACHE2_ECX	92
+#define X86_DCACHE2_EDX	96
+#define X86_DCACHE3_EAX	100
+#define X86_DCACHE3_EBX	104
+#define X86_DCACHE3_ECX	108
+#define X86_DCACHE3_EDX	112
 
 	.code32
 	.globl startup_32
@@ -373,6 +389,37 @@ have_cpuid:
 	movl	%ebx, X86_CACHE+4(%esi)
 	movl	%ecx, X86_CACHE+8(%esi)
 	movl	%edx, X86_CACHE+12(%esi)
+# Grab deterministic cache information (for 32nm Intel CPU)
+	cmpw $0x0000,%dx
+	jne id_done
+	movl $4, %eax
+	movl $0, %ecx
+	cpuid
+	movl	%eax, X86_DCACHE0_EAX(%esi)
+	movl	%ebx, X86_DCACHE0_EBX(%esi)
+	movl	%ecx, X86_DCACHE0_ECX(%esi)
+	movl	%edx, X86_DCACHE0_EDX(%esi)	
+	movl $4, %eax
+	movl $1, %ecx
+	cpuid
+	movl	%eax, X86_DCACHE1_EAX(%esi)
+	movl	%ebx, X86_DCACHE1_EBX(%esi)
+	movl	%ecx, X86_DCACHE1_ECX(%esi)
+	movl	%edx, X86_DCACHE1_EDX(%esi)	
+	movl $4, %eax
+	movl $2, %ecx
+	cpuid
+	movl	%eax, X86_DCACHE2_EAX(%esi)
+	movl	%ebx, X86_DCACHE2_EBX(%esi)
+	movl	%ecx, X86_DCACHE2_ECX(%esi)
+	movl	%edx, X86_DCACHE2_EDX(%esi)	
+	movl $4, %eax
+	movl $3, %ecx
+	cpuid
+	movl	%eax, X86_DCACHE3_EAX(%esi)
+	movl	%ebx, X86_DCACHE3_EBX(%esi)
+	movl	%ecx, X86_DCACHE3_ECX(%esi)
+	movl	%edx, X86_DCACHE3_EDX(%esi)	
 	jmp	id_done
 
 not_intel:
@@ -980,6 +1027,6 @@ mem_info:
 .bss
 .balign 16
 stack:
-	. = . + 4096
+	. = . + 8192
 stack_top:
 .previous

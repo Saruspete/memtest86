@@ -16,6 +16,7 @@
 #include "spd.h"
 #include "test.h"
 
+
 int col, col2;
 int nhm_bus = 0x3F;
 	
@@ -160,6 +161,8 @@ void print_fsb_info(float val, const char *text_fsb, const char *text_ddr) {
 	col2 += 1;
 }
 
+
+
 static void poll_fsb_nothing(void)
 {
 /* Code to run for no specific fsb detection */
@@ -187,6 +190,23 @@ static void poll_nothing(void)
 	return;
 }
 
+static void setup_wmr(void)
+{
+
+	// Activate MMR I/O
+	ulong dev0;
+	ctrl.cap = ECC_CORRECT;
+	
+	pci_conf_read( 0, 0, 0, 0x48, 4, &dev0);
+	if (!(dev0 & 0x1)) {
+		pci_conf_write( 0, 0, 0, 0x48, 1, dev0 | 1);
+	}
+
+	ctrl.mode = ECC_NONE; 
+	
+}
+
+
 static void setup_nhm(void)
 {
 	static float possible_nhm_bus[] = {0xFF, 0x7F, 0x3F};
@@ -204,7 +224,7 @@ static void setup_nhm(void)
 		pci_conf_read( possible_nhm_bus[i], 3, 4, 0x02, 2, &did);
 		vid &= 0xFFFF;
 		did &= 0xFF00;
-		if(vid == 0x8086 && did == 0x2C00) { 
+		if(vid == 0x8086 && did >= 0x2C00) { 
 			nhm_bus = possible_nhm_bus[i]; 
 			}
 }
@@ -217,6 +237,41 @@ static void setup_nhm(void)
 		ctrl.mode = ECC_CORRECT; 
 		pci_conf_read(nhm_bus, 3, 2, 0x48, 2, &mc_ssrcontrol);	
 		if(mc_ssrcontrol & 3) { 
+			ctrl.mode = ECC_SCRUB; 
+		}		
+	}
+	
+}
+
+static void setup_nhm32(void)
+{
+	static float possible_nhm_bus[] = {0xFF, 0x7F, 0x3F};
+	unsigned long did, vid, mc_control, mc_ssrcontrol;
+	int i;
+	
+	//Nehalem supports Scrubbing */
+	ctrl.cap = ECC_SCRUB;
+	ctrl.mode = ECC_NONE;
+
+	/* First, locate the PCI bus where the MCH is located */
+
+	for(i = 0; i < sizeof(possible_nhm_bus); i++) {
+		pci_conf_read( possible_nhm_bus[i], 3, 4, 0x00, 2, &vid);
+		pci_conf_read( possible_nhm_bus[i], 3, 4, 0x02, 2, &did);
+		vid &= 0xFFFF;
+		did &= 0xFF00;
+		if(vid == 0x8086 && did >= 0x2C00) { 
+			nhm_bus = possible_nhm_bus[i]; 
+			}
+}
+
+	/* Now, we have the last IMC bus number in nhm_bus */
+	/* Check for ECC & Scrub */
+	pci_conf_read(nhm_bus, 3, 0, 0x48, 2, &mc_control);	
+	if((mc_control >> 1) & 1) { 
+		ctrl.mode = ECC_CORRECT; 
+		pci_conf_read(nhm_bus, 3, 2, 0x48, 2, &mc_ssrcontrol);	
+		if(mc_ssrcontrol & 1) { 
 			ctrl.mode = ECC_SCRUB; 
 		}		
 	}
@@ -1175,6 +1230,58 @@ static float getNHMmultiplier(void)
 	return coef;
 }
 
+
+void getIntelPNS(void)
+{
+	int i,j;
+	long psn_eax, psn_ebx, psn_ecx, psn_edx;
+	long char_hex;
+	long ocpuid = 0x80000002;
+
+	for(j = 0; j < 4; j++)
+	{
+
+		asm __volatile__(
+			"pushl %%ebx\n\t" \
+			"cpuid\n\t" \
+			"movl %%ebx, %1\n\t" \
+			"popl %%ebx\n\t" \
+			: "=a" (psn_eax), "=r" (psn_ebx), "=c" (psn_ecx), "=d" (psn_edx)
+			: "a" (ocpuid)
+			: "cc"
+		);
+		
+
+		for(i = 0; i < 4; i++)
+		{
+			char_hex = (psn_eax >> (i*8)) & 0xff;
+			cprint(LINE_CPU+5, col + i, convert_hex_to_char(char_hex));
+	
+			char_hex = (psn_ebx >> (i*8)) & 0xff;
+			cprint(LINE_CPU+5, col + i + 4, convert_hex_to_char(char_hex));
+			
+			if(psn_ecx != 0x20202020)
+			{
+				char_hex = (psn_ecx >> (i*8)) & 0xff;
+				cprint(LINE_CPU+5, col + i + 8, convert_hex_to_char(char_hex));
+							
+				char_hex = (psn_edx >> (i*8)) & 0xff;
+				cprint(LINE_CPU+5, col + i + 12, convert_hex_to_char(char_hex));
+			}
+			else 
+			{
+				char_hex = (psn_edx >> (i*8)) & 0xff;
+				cprint(LINE_CPU+5, col + i + 8, convert_hex_to_char(char_hex));				
+			}
+		}
+		(psn_ecx != 0x20202020)?(col += 16):(col +=12);
+		if(psn_edx == 0x20202020) { col -= 4; }
+		ocpuid++;
+	}
+	
+	col -= 16;
+}
+
 static void poll_fsb_amd64(void) {
 
 	unsigned int mcgsrl;
@@ -2092,6 +2199,98 @@ static void poll_fsb_nhm(void) {
 
 }
 
+static void poll_fsb_nhm32(void) {
+
+	double dramclock, dramratio, fsb;
+	unsigned long mc_dimm_clk_ratio, qpi_pll_status;
+	float coef = getNHMmultiplier();
+	float qpi_speed;
+
+	fsb = ((extclock /1000) / coef);
+
+	/* Print FSB */
+	cprint(LINE_CPU+5, col +1, "/ BCLK : ");
+	col += 10;
+	dprint(LINE_CPU+5, col, fsb, 3,0);
+	col += 3;
+	cprint(LINE_CPU+5, col +1, "MHz");
+	col += 4;
+	
+	/* Print QPI Speed (if ECC not supported) */
+	if(ctrl.mode == ECC_NONE && cpu_id.model == 12) {
+		pci_conf_read(nhm_bus, 2, 1, 0x50, 2, &qpi_pll_status);
+		qpi_speed = (qpi_pll_status & 0x7F) * ((extclock / 1000) / coef) * 2;
+		cprint(LINE_CPU+5, col +1, "/ QPI : ");
+		col += 9;
+		dprint(LINE_CPU+5, col, qpi_speed/1000, 1,0);
+		col += 1;
+		cprint(LINE_CPU+5, col, ".");
+		col += 1;		
+		qpi_speed = ((qpi_speed / 1000) - (int)(qpi_speed / 1000)) * 10;
+		dprint(LINE_CPU+5, col, qpi_speed, 1,0);
+		col += 1;		
+		cprint(LINE_CPU+5, col +1, "GT/s");
+		col += 5;	
+	}
+	
+	/* Get the clock ratio */
+	
+	pci_conf_read(nhm_bus, 3, 4, 0x50, 2, &mc_dimm_clk_ratio);
+	dramratio = (mc_dimm_clk_ratio & 0x1F);
+	
+	// Compute RAM Frequency
+	fsb = ((extclock / 1000) / coef);
+	dramclock = fsb * dramratio / 2;
+
+	// Print DRAM Freq
+	print_fsb_info(dramclock, "RAM : ", "DDR3-");
+
+}
+
+static void poll_fsb_wmr(void) {
+
+	double dramclock, dramratio, fsb;
+	unsigned long dev0, mchcfg;
+	float coef = getNHMmultiplier();
+	long *ptr;
+	
+	fsb = ((extclock / 1000) / coef);
+
+	if(ctrl.mode == ECC_NONE)
+		{
+			col = 0;
+			cprint(LINE_CPU+5, col, "IMC : "); col += 6;
+			getIntelPNS();	
+			//cprint(LINE_CPU+5, col, "(ECC : Disabled)");
+			//col += 16;
+		}
+
+	/* Print FSB */
+	cprint(LINE_CPU+5, col +1, "/ BCLK : ");
+	col += 10;
+	dprint(LINE_CPU+5, col, fsb, 3,0);
+	col += 3;
+	cprint(LINE_CPU+5, col +1, "MHz");
+	col += 4;
+
+	/* Find dramratio */
+	pci_conf_read( 0, 0, 0, 0x48, 4, &dev0);
+	dev0 &= 0xFFFFC000;
+	ptr=(long*)(dev0+0x2C20);
+	mchcfg = *ptr & 0xFFFF;
+	dramratio = 1;
+	
+	/* Get the clock ratio */
+	dramratio = 0.25 * (float)(*ptr & 0x1F);
+	
+	// Compute RAM Frequency
+	dramclock = fsb * dramratio;
+
+	// Print DRAM Freq
+	print_fsb_info(dramclock, "RAM : ", "DDR3-");
+
+}
+
 /* ------------------ Here the code for Timings detection ------------------ */
 /* ------------------------------------------------------------------------- */
 
@@ -2483,6 +2682,71 @@ static void poll_timings_p35(void) {
 	}
 
 }
+
+static void poll_timings_wmr(void) {
+
+	float cas;
+	int rcd, rp, ras;
+	ulong dev0, c0ckectrl, c1ckectrl, offset;
+	ulong ODT_Control_Register, Precharge_Register, ACT_Register, Read_Register, MRC_Register;
+	long *ptr;
+
+	//Now, read MMR Base Address
+	pci_conf_read( 0, 0, 0, 0x48, 4, &dev0);
+	dev0 &= 0xFFFFC000;
+
+	ptr = (long*)(dev0+0x260);
+	c0ckectrl = *ptr & 0xFFFFFFFF;	
+
+	ptr = (long*)(dev0+0x660);
+	c1ckectrl = *ptr & 0xFFFFFFFF;
+	
+	// If DIMM 0 not populated, check DIMM 1
+	((c0ckectrl) >> 20 & 0xF)?(offset = 0):(offset = 0x400);
+
+	ptr = (long*)(dev0+offset+0x265);
+	ODT_Control_Register = *ptr & 0xFFFFFFFF;
+
+	ptr = (long*)(dev0+offset+0x25D);	
+	Precharge_Register = *ptr & 0xFFFFFFFF;
+
+	ptr = (long*)(dev0+offset+0x252);
+	ACT_Register = *ptr & 0xFFFFFFFF;
+
+	ptr = (long*)(dev0+offset+0x258);
+	Read_Register = *ptr & 0xFFFFFFFF;
+
+	ptr = (long*)(dev0+offset+0x240);
+	MRC_Register = *ptr & 0xFFFFFFFF;
+
+	// CAS Latency (tCAS)
+	if(MRC_Register & 0xF) {
+		cas = (MRC_Register & 0xF) + 3.0f;
+	} else {
+		cas = ((ODT_Control_Register >> 8)& 0x3F) - 5.0f;
+	}
+
+	// RAS-To-CAS (tRCD)
+	rcd = (Read_Register >> 17) & 0xF;
+
+	// RAS Precharge (tRP)
+	rp = (ACT_Register >> 13) & 0xF;
+
+	// RAS Active to precharge (tRAS)
+	ras = Precharge_Register & 0x3F;
+	
+	print_timings_info(cas, rcd, rp, ras);
+
+	cprint(LINE_CPU+6, col2+1, "/"); col2 +=2;
+
+	if ((c0ckectrl >> 20 & 0xF) && (c1ckectrl >> 20 & 0xF)) { 
+		cprint(LINE_CPU+6, col2+1, "Dual Channel"); 
+	}	else {
+		cprint(LINE_CPU+6, col2+1, "Single Channel"); 
+	}
+
+}
+
 
 static void poll_timings_5400(void) {
 
@@ -2938,7 +3202,7 @@ static void poll_timings_nhm(void) {
 		fvc_bn = 4; 
 	} else if(mc_control & 2) { 
 		fvc_bn = 5; 
-	}	else if(mc_control & 7) { 
+	}	else if(mc_control & 4) { 
 		fvc_bn = 6; 
 	}
 
@@ -3098,6 +3362,7 @@ static struct pci_memory_controller controllers[] = {
 	{ 0x8086, 0x29C0, "Intel P35/G33", 	 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
 	{ 0x8086, 0x29D0, "Intel Q33",	  	 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
 	{ 0x8086, 0x29E0, "Intel X38/X48", 	 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},			
+	{ 0x8086, 0x29F0, "Intel 3200/3210", 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
 	{ 0x8086, 0x2E10, "Intel Q45/Q43", 	 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
 	{ 0x8086, 0x2E20, "Intel P45/G45",	  	0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
 	{ 0x8086, 0x2E30, "Intel G41", 	 				0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
@@ -3113,7 +3378,8 @@ static struct pci_memory_controller controllers[] = {
 
 	/* Integrated Memory Controllers */
 	{ 0xFFFF, 0x0001, "Core IMC", 	 				0, poll_fsb_nhm, 	poll_timings_nhm, setup_nhm, poll_nothing},
-	{ 0xFFFF, 0x0002, "Core IMC2", 	 				0, poll_fsb_nhm, 	poll_timings_nothing, setup_nhm, poll_nothing},
+	{ 0xFFFF, 0x0002, "Core IMC 32nm", 	 		0, poll_fsb_nhm32, 	poll_timings_nhm, setup_nhm32, poll_nothing},
+	{ 0xFFFF, 0x0003, "Core IMC 32nm", 	 		0, poll_fsb_wmr, 	poll_timings_wmr, setup_wmr, poll_nothing},
 	{ 0xFFFF, 0x0100, "AMD K8 IMC",					0, poll_fsb_amd64, poll_timings_amd64, setup_amd64, poll_amd64 },
 	{ 0xFFFF, 0x0101, "AMD K10 IMC",			  0, poll_fsb_k10, poll_timings_k10, setup_k10, poll_nothing }
 	

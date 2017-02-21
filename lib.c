@@ -24,7 +24,7 @@ short serial_cons = SERIAL_CONSOLE_DEFAULT;
 #error Bad SERIAL_TTY. Only ttyS0 and ttyS1 are supported.
 #endif
 short serial_tty = SERIAL_TTY;
-const short serial_base_ports[] = {0x3f8, 0x2f8};
+const short serial_base_ports[] = {0x3f8, 0x2f8, 0x3e8, 0x2e8};
 
 #if ((115200%SERIAL_BAUD_RATE) != 0)
 #error Bad default baud rate
@@ -1053,8 +1053,8 @@ void serial_console_setup(char *param)
 	if (option == param)
 		return;   /* there were no digits */
 
-	if (tty > 1)
-		return;   /* only ttyS0 and ttyS1 supported */
+	if (tty > 3)
+		return;   /* only ttyS0 to ttyS3 supported */
 
 	if (*option == '\0' || *option == ' ')
 		goto save_tty; /* no options given, just ttyS? */

@@ -3,7 +3,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
- * MemTest86+ V4.00 Specific code (GPL V2.0)
+ * MemTest86+ V4.10 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.canardpc.com - http://www.memtest.org
  */
@@ -65,7 +65,7 @@ static void display_init(void)
 	for(i=0, pp=(char *)(SCREEN_ADR+1); i<TITLE_WIDTH; i++, pp+=2) {
 		*pp = 0x20;
 	}
-	cprint(0, 0, "      Memtest86  v4.00      ");
+	cprint(0, 0, "      Memtest86  v4.10      ");
 
 	for(i=0, pp=(char *)(SCREEN_ADR+1); i<2; i++, pp+=30) {
 		*pp = 0xA4;
@@ -777,6 +777,41 @@ void cpu_type(void)
 					break;		
 				}
 			}
+		
+		// If no cache found, check if deterministic cache info are available
+		if(l1_cache == 0 && ((cpu_id.dcache0_eax >> 5) & 7) == 1) 
+			{
+		
+			long dcache[] = { cpu_id.dcache0_eax, cpu_id.dcache0_ebx, cpu_id.dcache0_ecx, cpu_id.dcache0_edx,
+												cpu_id.dcache1_eax, cpu_id.dcache1_ebx, cpu_id.dcache1_ecx, cpu_id.dcache1_edx,
+												cpu_id.dcache2_eax, cpu_id.dcache2_ebx, cpu_id.dcache2_ecx, cpu_id.dcache2_edx,
+												cpu_id.dcache3_eax, cpu_id.dcache3_ebx, cpu_id.dcache3_ecx, cpu_id.dcache3_edx
+											};
+			
+			for(i=0; i<4; i++)
+			{
+				switch((dcache[i*4] >> 5) & 7)
+				{
+					case 1:
+						// We don't want L1 I-Cache, only L1 D-Cache
+						if((dcache[i*4] & 3) != 2)
+						{
+							l1_cache = (((dcache[i*4+1] >> 22) & 0x3FF) + 1) * (((dcache[i*4+1] >> 12) & 0x3FF) + 1);
+							l1_cache *= ((dcache[i*4+1] & 0xFFF) + 1) * (dcache[i*4+2] + 1) / 1024;
+						}
+						break;
+					case 2:
+						l2_cache = (((dcache[i*4+1] >> 22) & 0x3FF) + 1) * (((dcache[i*4+1] >> 12) & 0x3FF) + 1);
+						l2_cache *= ((dcache[i*4+1] & 0xFFF) + 1) * (dcache[i*4+2] + 1) / 1024;
+						break;			
+					case 3:
+						l3_cache = (((dcache[i*4+1] >> 22) & 0x3FF) + 1) * (((dcache[i*4+1] >> 12) & 0x3FF) + 1);
+						l3_cache *= ((dcache[i*4+1] & 0xFFF) + 1) * (dcache[i*4+2] + 1) / 1024;
+						break;						
+				}	
+			}
+		}
+
 
 			switch(cpu_id.type) {
 			case 5:
@@ -818,7 +853,7 @@ void cpu_type(void)
 					if(((cpu_id.ext >> 16) & 0xF) > 1) {
 						cprint(LINE_CPU, 0, "Intel Core i3/i5");
 						tsc_invariable = 1;
-						imc_type = 0x0002;
+						imc_type = 0x0003;
 						off = 16;
 					} else {
 						cprint(LINE_CPU, 0, "Intel EP80579");
@@ -876,10 +911,16 @@ void cpu_type(void)
 					break;
 				case 10:
 					if (((cpu_id.ext >> 16) & 0xF) != 0) {
-						  tsc_invariable = 1;
-						  imc_type = 0x0001;
-							cprint(LINE_CPU, 0, "Intel Core i7");
-							off = 13;
+							tsc_invariable = 1;
+							if(((cpu_id.ext >> 16) & 0xF) > 1) {
+								cprint(LINE_CPU, 0, "Intel SNB");
+								imc_type = 0x0003;
+								off = 9;
+							} else {
+							  imc_type = 0x0001;
+								cprint(LINE_CPU, 0, "Intel Core i7");
+								off = 13;
+							}
 						} else {
 							cprint(LINE_CPU, 0, "Pentium III Xeon");
 							off = 16;
@@ -887,10 +928,10 @@ void cpu_type(void)
 					break;
 				case 12:
 					if (((cpu_id.ext >> 16) & 0xF) > 1) {					
-						cprint(LINE_CPU, 0, "Intel Core i9");
+						cprint(LINE_CPU, 0, "Core i7 (32nm)");
 						tsc_invariable = 1;
 						imc_type = 0x0002;
-						off = 13;
+						off = 14;
 					} else {
 						l1_cache = 24;
 						cprint(LINE_CPU, 0, "Atom (0.045)");
@@ -1369,7 +1410,7 @@ ulong memspeed(ulong src, ulong len, int iter, int type)
 				"lodsl\n\t" \
        		 		"loop L2\n\t" \
 				:: "g" (src), "g" (wlen)
-				: "esi", "ecx"
+				: "esi", "ecx", "eax"
 			);
 		}
 		asm __volatile__ ("rdtsc":"=a" (end_low),"=d" (end_high));
