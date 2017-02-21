@@ -114,16 +114,18 @@ struct pci_smbus_controller {
 };
 
 static struct pci_smbus_controller smbcontrollers[] = {
-{0x8086, 0x3A30, "Intel ICH10", ich5_get_smb, ich5_read_spd},
-{0x8086, 0x2930, "Intel ICH9", ich5_get_smb, ich5_read_spd},
-{0x8086, 0x283E, "Intel ICH8", ich5_get_smb, ich5_read_spd},
-{0x8086, 0x27DA, "Intel ICH7", ich5_get_smb, ich5_read_spd},
-{0x8086, 0x266A, "Intel ICH6", ich5_get_smb, ich5_read_spd},
-{0x8086, 0x24D3, "Intel ICH5", ich5_get_smb, ich5_read_spd},
-{0x8086, 0x24C3, "Intel ICH4", ich5_get_smb, ich5_read_spd},
+{0x8086, 0x3B30, "Intel P55", 		ich5_get_smb, ich5_read_spd},
+{0x8086, 0x3A60, "Intel ICH10B", 	ich5_get_smb, ich5_read_spd},
+{0x8086, 0x3A30, "Intel ICH10R", 	ich5_get_smb, ich5_read_spd},
+{0x8086, 0x2930, "Intel ICH9", 		ich5_get_smb, ich5_read_spd},
+{0x8086, 0x283E, "Intel ICH8", 		ich5_get_smb, ich5_read_spd},
+{0x8086, 0x27DA, "Intel ICH7", 		ich5_get_smb, ich5_read_spd},
+{0x8086, 0x266A, "Intel ICH6", 		ich5_get_smb, ich5_read_spd},
+{0x8086, 0x24D3, "Intel ICH5", 		ich5_get_smb, ich5_read_spd},
+{0x8086, 0x24C3, "Intel ICH4", 		ich5_get_smb, ich5_read_spd},
 {0x8086, 0x25A4, "Intel 6300ESB", ich5_get_smb, ich5_read_spd},
-{0x8086, 0x269B, "Intel ESB2", ich5_get_smb, ich5_read_spd},
-{0x8086, 0x8119, "Intel US15W", us15w_get_smb, us15w_read_spd},
+{0x8086, 0x269B, "Intel ESB2", 		ich5_get_smb, ich5_read_spd},
+{0x8086, 0x8119, "Intel US15W", 	us15w_get_smb, us15w_read_spd},
 {0x8086, 0x5032, "Intel EP80579", ich5_get_smb, ich5_read_spd},
 {0, 0, "", NULL, NULL}
 };

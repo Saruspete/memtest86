@@ -3,7 +3,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
- * MemTest86+ V2.10 Specific code (GPL V2.0)
+ * MemTest86+ V2.11 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.canardpc.com - http://www.memtest.org
  */
@@ -63,7 +63,7 @@ static void display_init(void)
 	for(i=0, pp=(char *)(SCREEN_ADR+1); i<TITLE_WIDTH; i++, pp+=2) {
 		*pp = 0x20;
 	}
-	cprint(0, 0, "      Memtest86  v2.10      ");
+	cprint(0, 0, "      Memtest86  v2.11      ");
 
 	for(i=0, pp=(char *)(SCREEN_ADR+1); i<2; i++, pp+=30) {
 		*pp = 0xA4;
@@ -810,7 +810,7 @@ void cpu_type(void)
 					break;
 				case 10:
 					if (((cpu_id.ext >> 16) & 0xF) != 0) {
-						tsc_invariable = 1;
+						  tsc_invariable = 1;
 							cprint(LINE_CPU, 0, "Intel Core i7");
 							off = 13;
 						} else {
@@ -832,8 +832,14 @@ void cpu_type(void)
 					off = 16;
 					break;
 				case 14:
-					cprint(LINE_CPU, 0, "Intel Core");
-					off = 10;
+					if (((cpu_id.ext >> 16) & 0xF) != 0) {
+						tsc_invariable = 1;
+						cprint(LINE_CPU, 0, "Intel Core i5");
+						off = 13;
+					} else {
+						cprint(LINE_CPU, 0, "Intel Core");
+						off = 10;
+					}
 					break;				
 				case 15:
 					if (l2_cache == 1024) {
@@ -1130,7 +1136,7 @@ static void cacheable(void)
 		}
 		/* Map the range and perform the test */
 		map_page(paddr);
-		speed = memspeed((ulong)mapping(paddr), 32*4096, 1, MS_COPY);
+		speed = memspeed((ulong)mapping(paddr), 32*4096, 1, MS_READ);
 		if (pspeed) {
 			if (speed < pspeed) {
 				cached -= 32;

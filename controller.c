@@ -3,7 +3,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
- * MemTest86+ V2.10 Specific code (GPL V2.0)
+ * MemTest86+ V2.11 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.canardpc.com - http://www.memtest.org
  */
@@ -1593,6 +1593,7 @@ static void poll_fsb_im965(void) {
 		case 1: fsb_mch = 533; break;
 		default: case 2:	fsb_mch = 800; break;
 		case 3:	fsb_mch = 667; break;				
+		case 6:	fsb_mch = 1066; break;			
 	}
 
 
@@ -1614,7 +1615,6 @@ static void poll_fsb_im965(void) {
 			case 5:	dramratio = 12.0f/5.0f; break;
 		}
 		break;
-		
 	default:
 	case 800:
 		switch ((mchcfg >> 4)&7) {
@@ -1625,7 +1625,12 @@ static void poll_fsb_im965(void) {
 			case 5:	dramratio = 2.0f; break;
 		}
 		break;
-
+	case 1066:
+		switch ((mchcfg >> 4)&7) {
+			case 5:	dramratio = 3.0f/2.0f; break;
+			case 6:	dramratio = 2.0f; break;
+		}
+		break;
 }
 
 	// Compute RAM Frequency
@@ -2361,9 +2366,14 @@ static void poll_timings_im965(void) {
 static void poll_timings_p35(void) {
 
 	// Thanks for CDH optis
-	ulong dev0, temp, Memory_Check,	c0ckectrl, c1ckectrl, offset;
+	float cas;
+	int rcd, rp, ras;
+	ulong dev0, Device_ID, Memory_Check,	c0ckectrl, c1ckectrl, offset;
 	ulong ODT_Control_Register, Precharge_Register, ACT_Register, Read_Register, Misc_Register;
 	long *ptr;
+
+	pci_conf_read( 0, 0, 0, 0x02, 2, &Device_ID);
+	Device_ID &= 0xFFFF;
 
 	//Now, read MMR Base Address
 	pci_conf_read( 0, 0, 0, 0x48, 4, &dev0);
@@ -2393,47 +2403,44 @@ static void poll_timings_p35(void) {
 	ptr = (long*)(dev0+offset+0x244);
 	Misc_Register = *ptr & 0xFFFFFFFF;
 
-	ptr = (long*)(dev0+offset+0x1E8);
-	Memory_Check = *ptr & 0xFFFFFFFF;	
+	// On P45, check 1A8
+	if(Device_ID > 0x2E00) {
+		ptr = (long*)(dev0+offset+0x1A8);
+		Memory_Check = *ptr & 0xFFFFFFFF;	
+		Memory_Check >>= 2;
+		Memory_Check &= 1;
+		Memory_Check = !Memory_Check;
+	} else {
+		ptr = (long*)(dev0+offset+0x1E8);
+		Memory_Check = *ptr & 0xFFFFFFFF;		
+	}
 
-	//Determine DDR or DDR-II
-	
+	//Determine DDR-II or DDR-III
 	if (Memory_Check & 1) {
 		cprint(LINE_CPU+5, col +1, "- Type : DDR2");
 	} else {
 		cprint(LINE_CPU+5, col +1, "- Type : DDR3");
 	}
 
-	// Now, detect timings
-	cprint(LINE_CPU+6, col2 +1, "/ CAS : ");
-	col2 += 9;
-
 	// CAS Latency (tCAS)
-	temp = ((ODT_Control_Register >> 8)& 0x3F) - 9.0f;
-	if (!(Memory_Check & 1)) { temp += 3.0f; }
-	dprint(LINE_CPU+6, col2, temp, 1 ,0);
-	cprint(LINE_CPU+6, col2+1, "-");
-	(temp < 10)?(col2 += 2):(col2 += 3);
+	if(Device_ID > 0x2E00) {
+		cas = ((ODT_Control_Register >> 8)& 0x3F) - 6.0f;
+	} else {
+		cas = ((ODT_Control_Register >> 8)& 0x3F) - 9.0f;
+	}
 
 	// RAS-To-CAS (tRCD)
-	temp = (Read_Register >> 17) & 0xF;
-	dprint(LINE_CPU+6, col2, temp, 1 ,0);
-	cprint(LINE_CPU+6, col2+1, "-");
-	(temp < 10)?(col2 += 2):(col2 += 3);
+	rcd = (Read_Register >> 17) & 0xF;
 
 	// RAS Precharge (tRP)
-	temp = (ACT_Register >> 13) & 0xF;
-	dprint(LINE_CPU+6, col2, temp, 1 ,0);
-	cprint(LINE_CPU+6, col2+1, "-");
-	(temp < 10)?(col2 += 2):(col2 += 3);
+	rp = (ACT_Register >> 13) & 0xF;
 
 	// RAS Active to precharge (tRAS)
-	temp = Precharge_Register & 0x3F;
-	dprint(LINE_CPU+6, col2, temp, 1 ,0);
-	(temp < 10)?(col2 += 1):(col2 += 2);
+	ras = Precharge_Register & 0x3F;
+	
+	print_timings_info(cas, rcd, rp, ras);
 
 	cprint(LINE_CPU+6, col2+1, "/"); col2 +=2;
-
 
 	if ((c0ckectrl >> 20 & 0xF) && (c1ckectrl >> 20 & 0xF)) { 
 		cprint(LINE_CPU+6, col2+1, "Dual Channel"); 
@@ -3057,12 +3064,13 @@ static struct pci_memory_controller controllers[] = {
 	{ 0x8086, 0x29A0, "Intel P965/G965", 		0, poll_fsb_i965, poll_timings_i965, setup_p35, poll_nothing},
 	{ 0x8086, 0x2A00, "Intel GM965/GL960", 	0, poll_fsb_im965, poll_timings_im965, setup_p35, poll_nothing},
 	{ 0x8086, 0x2A10, "Intel GME965/GLE960",0, poll_fsb_im965, poll_timings_im965, setup_p35, poll_nothing},	
+	{ 0x8086, 0x2A40, "Intel PM/GM45/47",		0, poll_fsb_im965, poll_timings_im965, setup_p35, poll_nothing},	
 	{ 0x8086, 0x29B0, "Intel Q35", 	 		 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
 	{ 0x8086, 0x29C0, "Intel P35/G33", 	 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
 	{ 0x8086, 0x29D0, "Intel Q33",	  	 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
 	{ 0x8086, 0x29E0, "Intel X38/X48", 	 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},			
 	{ 0x8086, 0x2E10, "Intel Q45/Q43", 	 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
-	{ 0x8086, 0x2E20, "Intel P45/G43",	  	0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
+	{ 0x8086, 0x2E20, "Intel P45/G45",	  	0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
 	{ 0x8086, 0x2E30, "Intel G41", 	 				0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
 	{ 0x8086, 0x4001, "Intel 5400A", 		 		0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing},		
 	{ 0x8086, 0x4003, "Intel 5400B", 		 		0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing},		
@@ -3073,6 +3081,11 @@ static struct pci_memory_controller controllers[] = {
 	{ 0x8086, 0x5020, "Intel EP80579",    	0, poll_fsb_p4, 	poll_timings_EP80579, setup_nothing, poll_nothing },
 	{ 0x8086, 0x8100, "Intel US15W",				0, poll_fsb_us15w, poll_timings_us15w, setup_nothing, poll_nothing},
 	{ 0x8086, 0x8101, "Intel UL11L/US15L", 	0, poll_fsb_us15w, poll_timings_us15w, setup_nothing, poll_nothing},
+	{ 0x8086, 0x3400, "NHM IMC", 	 					0, poll_fsb_nhm, 	poll_timings_nhm, setup_nhm, poll_nothing},
+	{ 0x8086, 0x3401, "NHM IMC", 	 					0, poll_fsb_nhm, 	poll_timings_nhm, setup_nhm, poll_nothing},
+	{ 0x8086, 0x3402, "NHM IMC", 	 					0, poll_fsb_nhm, 	poll_timings_nhm, setup_nhm, poll_nothing},
+	{ 0x8086, 0x3403, "NHM IMC", 	 					0, poll_fsb_nhm, 	poll_timings_nhm, setup_nhm, poll_nothing},
+	{ 0x8086, 0x3404, "NHM IMC", 	 					0, poll_fsb_nhm, 	poll_timings_nhm, setup_nhm, poll_nothing},
 	{ 0x8086, 0x3405, "NHM IMC", 	 					0, poll_fsb_nhm, 	poll_timings_nhm, setup_nhm, poll_nothing}
 };	
 

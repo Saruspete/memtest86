@@ -1,22 +1,10 @@
-Memtest86+ V2.10 changelog
+Memtest86+ V2.11 changelog
 --------------------------
 
-  - Added support for Intel Core i7 (Nehalem) CPU
- 	- Added support for Intel Atom Processors
- 	- Added support for Intel G41/G43/G45 Chipsets
- 	- Added support for Intel P43/P45 Chipsets
-	- Added support for Intel US15W (Poulsbo) Chipset
-  - Added support for Intel EP80579 (Tolapai) SoC CPU
-	- Added support for ICH10 Southbridge (SPD/DMI)
-	- Added detection for Intel 5000X
-  - Added workaround for DDR3 DMI detection
-  - Now fully aware of CPU w/ L3 cache (Core i7 & K10)
-	- Fixed Intel 5000Z chipset detection
-	- Fixed Memory Frequency on AMD K10
-	- Fixed cache detection on C7/Isaiah CPU
-  - Fix Memtest86+ not recognized as Linux Kernel
-
-Warning : GCC 4.2+ is not yet supported. Thanks to the new pointers over/underflows limitations 
-introduced with that version ! Memtest86+ compiled with GCC 4.2+ will result in a non-working 
-binary (hangs in the first seconds). We're working on a fix but there is really many parts of
-the code to check & change everywhere. So, please use GCC 4.1 instead.
+  - Added support for Intel Core i5 (Lynnfield) CPU
+  - Added support for Intel P55 Southbridge
+  - Added support for Intel PM45/GM45/GM47 Mobile chipset
+  - Added support for Intel GL40/GS45 Mobile chipset
+  - Corrected DDR2/DDR3 detection on Intel x35/x45
+  - Corrected detection on some Core i7 CPU 
+  - Various bug fixes
