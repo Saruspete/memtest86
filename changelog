@@ -1,24 +1,20 @@
-Memtest86+ V2.00 changelog
+Memtest86+ V2.01 changelog
 --------------------------
 
-- Major Architectures changes
-- Modulo test now use random pattern for better accuracy
-- Added Advanced DMI Errors Reporting Mode
-- Added support for bus ratio changes on Intel Core CPU
-- Added support for non-integer bus ratio on latest Intel CPU
-- Added SPD Data Display for all Intel Chipsets (more to come)
-- Added serial support as a linux boot parameter (Thanks to Michal S.)
-- Added preliminary support for VIA CN Isaiah CPU
-- Added preliminary support for Intel Nehalem
-- Adedd support for VIA C7/C7-D/C7-M/Eden on Esther Core
-- Added support for AMD K10 (Phenom) CPU w/ timings detection
-- Added support for Intel Pentium E w/ 1 MB L2 Cache
-- Added support for Intel Core 2 45nm (Penryn)
-- Added support for FSB1333/FSB1600 Intel CPU
-- Added support for Intel 5400A/5400B w/ timings detection
-- Added support for Intel Q35/P35/G33/Q33 w/ timings detection
-- Added support for Intel X38/X48 w/ timings detection
-- Added preliminary support for Intel 5000P/V/Z
-- Removed on-fly memory timings change (unstable)
-- Numerous (really) bug fixes
-
+	- Solved a major bug in Memory Address Errors Reporting
+	- Patched for Intel-Powered Mac
+	- Pass duration 20% reduced 
+	- Solved a incoherency with pass progress indicator
+	- Patched Makefile to compile on x86_64
+	- Added support for 45 nm Mobile Core 2 w/ 3 Mo L2
+	- Corrected Intel 3-Series (P35/X38) chipset init 
+  - Corrected a bug with SPD Display and ESB6300
+  - Correct a detection bug on P965/G965 C-Stepping
+  - Added support for i945GM/PM/GME & i946PL/GZ
+  - Added support for iGM965/iGL960/iPM965/iGME965/iGLE960
+  - Added detection for SiS 649/656/671/672
+  - Added detection for i430MX/i430TX
+	- Added an optional beep mode (pass completed w/o error)
+	- Removed the blinking cursor
+	- Bootable Memtest86+ ISO more compatible
+	- Reverted Test #0 to cached

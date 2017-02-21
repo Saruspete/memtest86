@@ -8,6 +8,7 @@
 #
 FDISK=/dev/fd0
 
+AS=as -32
 CC=gcc
 
 CFLAGS=-Wall -march=i486 -m32 -Os -fomit-frame-pointer -fno-builtin -ffreestanding -fPIC
@@ -32,6 +33,15 @@ memtest_shared.bin: memtest_shared
 memtest: memtest_shared.bin memtest.lds
 	$(LD) -s -T memtest.lds -b binary memtest_shared.bin -o $@
 
+head.s: head.S config.h defs.h test.h
+	$(CC) -E -traditional $< -o $@
+
+bootsect.s: bootsect.S config.h defs.h
+	$(CC) -E -traditional $< -o $@
+
+setup.s: setup.S config.h defs.h
+	$(CC) -E -traditional $< -o $@
+
 memtest.bin: memtest_shared.bin bootsect.o setup.o memtest.bin.lds
 	$(LD) -T memtest.bin.lds bootsect.o setup.o -b binary \
 	memtest_shared.bin -o memtest.bin
@@ -43,7 +53,12 @@ test.o: test.c
 	$(CC) -c -Wall -march=i486 -m32 -Os -fomit-frame-pointer -fno-builtin -ffreestanding test.c
 
 clean:
-	rm -f *.o memtest.bin memtest memtest_shared memtest_shared.bin
+	rm -f *.o *.s *.iso memtest.bin memtest memtest_shared memtest_shared.bin
+
+iso:
+	make all
+	./makeiso.sh
+	rm -f *.o *.s memtest.bin memtest memtest_shared memtest_shared.bin
 
 install: all
 	dd <memtest.bin >$(FDISK) bs=8192

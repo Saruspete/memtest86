@@ -3,7 +3,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
- * MemTest86+ V2.00 Specific code (GPL V2.0)
+ * MemTest86+ V2.01 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.canardplus.com - http://www.memtest.org
  */
@@ -63,7 +63,7 @@ static void display_init(void)
 	for(i=0, pp=(char *)(SCREEN_ADR+1); i<TITLE_WIDTH; i++, pp+=2) {
 		*pp = 0x20;
 	}
-	cprint(0, 0, "      Memtest86  v2.00      ");
+	cprint(0, 0, "      Memtest86  v2.01      ");
 
 	for(i=0, pp=(char *)(SCREEN_ADR+1); i<2; i++, pp+=30) {
 		*pp = 0xA4;
@@ -677,6 +677,9 @@ void cpu_type(void)
 				case 0x7d:
 				case 0x85:
 					l2_cache = 2048;
+					break;
+				case 0x48:
+					l2_cache = 3072;
 					break;
 				case 0x49:
 					l2_cache = 4096;

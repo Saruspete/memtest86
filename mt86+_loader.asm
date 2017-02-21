@@ -12,8 +12,8 @@
 ; The good thing is that you get a single file which can be
 ; compressed, for example with http://upx.sf.net/ (UPX).
 
-%define fullsize (111512 + buffer - exeh)
-	; 111512 is the size of memtest86+ V2.00, adjust as needed!
+%define fullsize (111864 + buffer - exeh)
+	; 111864 is the size of memtest86+ V2.01, adjust as needed!
 
 %define stacksize 2048
 %define stackpara ((stacksize + 15) / 16)
@@ -135,7 +135,7 @@ findpoint:		; now patch the loader!
 	movzx eax,al
 	shl eax,9		; log 2 of sector size
 	add [cs:buflinear],eax	; linear address of head.S now
-	mov ax,[buffer+237h]	; should be jmp far dword (ofs, seg)
+	mov ax,[buffer+251h]	; should be jmp far dword (ofs, seg)
 	cmp ax,0ea66h
 	jz foundpatch
 patchbug:			; could not patch the jump
@@ -148,7 +148,7 @@ gdtbug:
 
 foundpatch:
 	mov eax,[cs:buflinear]
-	mov [buffer+239h],eax	; patch the protected mode entry jump
+	mov [buffer+253h],eax	; patch the protected mode entry jump
 	; (offset only - segment selector unchanged: flat linear CS)
 
 findgdt:

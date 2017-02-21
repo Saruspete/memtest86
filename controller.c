@@ -3,7 +3,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
- * MemTest86+ V2.00 Specific code (GPL V2.0)
+ * MemTest86+ V2.01 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.x86-secret.com - http://www.memtest.org
  */
@@ -218,8 +218,6 @@ static void setup_amd64(void)
 		/* Clear any previous error */
 		pci_conf_read(0, 24, 3, 0x4C, 4, &mcanb);
 		pci_conf_write(0, 24, 3, 0x4C, 4, mcanb & 0x7F801EFC );
-		
-		
 	}
 }
 
@@ -700,9 +698,7 @@ static void setup_i875(void)
 
 	/* Reseting state */
 	pci_conf_write(ctrl.bus, ctrl.dev, ctrl.fn, 0xC8, 2,  0x81);
-
 }
-
 
 static void setup_i925(void)
 {
@@ -747,7 +743,7 @@ static void setup_p35(void)
 	ulong dev0, capid0;
 	
 	pci_conf_read( 0, 0, 0, 0x48, 4, &dev0);
-	if (!(dev0 & 0xFFFFC000) & 0x1) {
+	if (!(dev0 & 0x1)) {
 		pci_conf_write( 0, 0, 0, 0x48, 1, dev0 | 1);
 	}
 	
@@ -1498,6 +1494,77 @@ static void poll_fsb_i965(void) {
 
 }
 
+static void poll_fsb_im965(void) {
+
+	double dramclock, dramratio, fsb;
+	unsigned long mchcfg, dev0, fsb_mch;
+	float coef = getP4PMmultiplier();
+	long *ptr;
+
+	/* Find dramratio */
+	pci_conf_read( 0, 0, 0, 0x48, 4, &dev0);
+	dev0 &= 0xFFFFC000;
+	ptr=(long*)(dev0+0xC00);
+	mchcfg = *ptr & 0xFFFF;
+	dramratio = 1;
+
+	switch (mchcfg & 7) {
+		case 1: fsb_mch = 533; break;
+		default: case 2:	fsb_mch = 800; break;
+		case 3:	fsb_mch = 667; break;				
+	}
+
+
+	switch (fsb_mch) {
+	case 533:
+		switch ((mchcfg >> 4)&7) {
+			case 1:	dramratio = 5.0f/4.0f; break;
+			case 2:	dramratio = 3.0f/2.0f; break;
+			case 3:	dramratio = 2.0f; break;
+		}
+		break;
+
+	case 667:
+		switch ((mchcfg >> 4)&7) {
+			case 1:	dramratio = 1.0f; break;
+			case 2:	dramratio = 6.0f/5.0f; break;
+			case 3:	dramratio = 8.0f/5.0f; break;
+			case 4:	dramratio = 2.0f; break;
+			case 5:	dramratio = 12.0f/5.0f; break;
+		}
+		break;
+		
+	default:
+	case 800:
+		switch ((mchcfg >> 4)&7) {
+			case 1:	dramratio = 5.0f/6.0f; break;
+			case 2:	dramratio = 1.0f; break;
+			case 3:	dramratio = 4.0f/3.0f; break;
+			case 4:	dramratio = 5.0f/3.0f; break;
+			case 5:	dramratio = 2.0f; break;
+		}
+		break;
+
+}
+
+	// Compute RAM Frequency
+	fsb = ((extclock / 1000) / coef);
+	dramclock = fsb * dramratio;
+
+	// Print DRAM Freq
+	print_fsb_info(dramclock, "RAM : ");
+
+	/* Print FSB (only if ECC is not enabled) */
+	cprint(LINE_CPU+4, col +1, "- FSB : ");
+	col += 9;
+	dprint(LINE_CPU+4, col, fsb, 3,0);
+	col += 3;
+	cprint(LINE_CPU+4, col +1, "MHz");
+	col += 4;
+
+}
+
+
 static void poll_fsb_5400(void) {
 
 	double dramclock, dramratio, fsb;
@@ -1955,11 +2022,10 @@ static void poll_timings_i925(void) {
 
 }
 
-
-static void poll_timings_p35(void) {
+static void poll_timings_i965(void) {
 
 	// Thanks for CDH optis
-	ulong dev0, temp, Memory_Check,	c0ckectrl, c1ckectrl;
+	ulong dev0, temp, c0ckectrl, c1ckectrl, offset;
 	ulong ODT_Control_Register, Precharge_Register, ACT_Register, Read_Register, Misc_Register;
 	long *ptr;
 
@@ -1967,29 +2033,173 @@ static void poll_timings_p35(void) {
 	pci_conf_read( 0, 0, 0, 0x48, 4, &dev0);
 	dev0 &= 0xFFFFC000;
 
-	ptr = (long*)(dev0+0x265);
+	ptr = (long*)(dev0+0x260);
+	c0ckectrl = *ptr & 0xFFFFFFFF;	
+
+	ptr = (long*)(dev0+0x660);
+	c1ckectrl = *ptr & 0xFFFFFFFF;
+	
+	// If DIMM 0 not populated, check DIMM 1
+	((c0ckectrl) >> 20 & 0xF)?(offset = 0):(offset = 0x400);
+
+	ptr = (long*)(dev0+offset+0x29C);
 	ODT_Control_Register = *ptr & 0xFFFFFFFF;
 
-	ptr = (long*)(dev0+0x25D);	
+	ptr = (long*)(dev0+offset+0x250);	
 	Precharge_Register = *ptr & 0xFFFFFFFF;
 
-	ptr = (long*)(dev0+0x252);
+	ptr = (long*)(dev0+offset+0x252);
 	ACT_Register = *ptr & 0xFFFFFFFF;
 
-	ptr = (long*)(dev0+0x258);
+	ptr = (long*)(dev0+offset+0x258);
 	Read_Register = *ptr & 0xFFFFFFFF;
 
-	ptr = (long*)(dev0+0x244);
+	ptr = (long*)(dev0+offset+0x244);
 	Misc_Register = *ptr & 0xFFFFFFFF;
 
-	ptr = (long*)(dev0+0x1E8);
-	Memory_Check = *ptr & 0xFFFFFFFF;	
+	//Intel 965 Series only support DDR2
+	cprint(LINE_CPU+4, col +1, "- Type : DDR-II");
+
+	// Now, detect timings
+	cprint(LINE_CPU+5, col2 +1, "/ CAS : ");
+	col2 += 9;
+
+	// CAS Latency (tCAS)
+	temp = ((ODT_Control_Register >> 17)& 7) + 3.0f;
+	dprint(LINE_CPU+5, col2, temp, 1 ,0);
+	cprint(LINE_CPU+5, col2+1, "-");
+	(temp < 10)?(col2 += 2):(col2 += 3);
+
+	// RAS-To-CAS (tRCD)
+	temp = (Read_Register >> 16) & 0xF;
+	dprint(LINE_CPU+5, col2, temp, 1 ,0);
+	cprint(LINE_CPU+5, col2+1, "-");
+	(temp < 10)?(col2 += 2):(col2 += 3);
+
+	// RAS Precharge (tRP)
+	temp = (ACT_Register >> 13) & 0xF;
+	dprint(LINE_CPU+5, col2, temp, 1 ,0);
+	cprint(LINE_CPU+5, col2+1, "-");
+	(temp < 10)?(col2 += 2):(col2 += 3);
+
+	// RAS Active to precharge (tRAS)
+	temp = (Precharge_Register >> 11) & 0x1F;
+	dprint(LINE_CPU+5, col2, temp, 1 ,0);
+	(temp < 10)?(col2 += 1):(col2 += 2);
+
+	cprint(LINE_CPU+5, col2+1, "/"); col2 +=2;
+
+	if ((c0ckectrl >> 20 & 0xF) && (c1ckectrl >> 20 & 0xF)) { 
+		cprint(LINE_CPU+5, col2+1, "Dual Channel"); 
+	}	else {
+		cprint(LINE_CPU+5, col2+1, "Single Channel"); 
+	}
+
+}
+
+static void poll_timings_im965(void) {
+
+	// Thanks for CDH optis
+	ulong dev0, temp, c0ckectrl, c1ckectrl, offset;
+	ulong ODT_Control_Register, Precharge_Register;
+	long *ptr;
+
+	//Now, read MMR Base Address
+	pci_conf_read( 0, 0, 0, 0x48, 4, &dev0);
+	dev0 &= 0xFFFFC000;
+
+	ptr = (long*)(dev0+0x1200);
+	c0ckectrl = *ptr & 0xFFFFFFFF;	
+
+	ptr = (long*)(dev0+0x1300);
+	c1ckectrl = *ptr & 0xFFFFFFFF;
+	
+	// If DIMM 0 not populated, check DIMM 1
+	((c0ckectrl) >> 20 & 0xF)?(offset = 0):(offset = 0x100);
+
+	ptr = (long*)(dev0+offset+0x121C);
+	ODT_Control_Register = *ptr & 0xFFFFFFFF;
+
+	ptr = (long*)(dev0+offset+0x1214);	
+	Precharge_Register = *ptr & 0xFFFFFFFF;
+
+	//Intel 965 Series only support DDR2
+	cprint(LINE_CPU+4, col+1, "- Type : DDR-II");
+
+	// Now, detect timings
+	cprint(LINE_CPU+5, col2 +1, "/ CAS : ");
+	col2 += 9;
+
+	// CAS Latency (tCAS)
+	temp = ((ODT_Control_Register >> 23)& 7) + 3.0f;
+	dprint(LINE_CPU+5, col2, temp, 1 ,0);
+	cprint(LINE_CPU+5, col2+1, "-");
+	(temp < 10)?(col2 += 2):(col2 += 3);
+
+	// RAS-To-CAS (tRCD)
+	temp = ((Precharge_Register >> 5)& 7) + 2.0f;
+	dprint(LINE_CPU+5, col2, temp, 1 ,0);
+	cprint(LINE_CPU+5, col2+1, "-");
+	(temp < 10)?(col2 += 2):(col2 += 3);
+
+	// RAS Precharge (tRP)
+	temp = (Precharge_Register & 7) + 2.0f;
+	dprint(LINE_CPU+5, col2, temp, 1 ,0);
+	cprint(LINE_CPU+5, col2+1, "-");
+	(temp < 10)?(col2 += 2):(col2 += 3);
+
+	// RAS Active to precharge (tRAS)
+	temp = (Precharge_Register >> 21) & 0x1F;
+	dprint(LINE_CPU+5, col2, temp, 1 ,0);
+	(temp < 10)?(col2 += 1):(col2 += 2);
+
+	cprint(LINE_CPU+5, col2+1, "/"); col2 +=2;
+
+	if ((c0ckectrl >> 20 & 0xF) && (c1ckectrl >> 20 & 0xF)) { 
+		cprint(LINE_CPU+5, col2+1, "Dual Channel"); 
+	}	else {
+		cprint(LINE_CPU+5, col2+1, "Single Channel"); 
+	}
+
+}
+
+static void poll_timings_p35(void) {
+
+	// Thanks for CDH optis
+	ulong dev0, temp, Memory_Check,	c0ckectrl, c1ckectrl, offset;
+	ulong ODT_Control_Register, Precharge_Register, ACT_Register, Read_Register, Misc_Register;
+	long *ptr;
+
+	//Now, read MMR Base Address
+	pci_conf_read( 0, 0, 0, 0x48, 4, &dev0);
+	dev0 &= 0xFFFFC000;
 
 	ptr = (long*)(dev0+0x260);
 	c0ckectrl = *ptr & 0xFFFFFFFF;	
 
 	ptr = (long*)(dev0+0x660);
-	c1ckectrl = *ptr & 0xFFFFFFFF;	
+	c1ckectrl = *ptr & 0xFFFFFFFF;
+	
+	// If DIMM 0 not populated, check DIMM 1
+	((c0ckectrl) >> 20 & 0xF)?(offset = 0):(offset = 0x400);
+
+	ptr = (long*)(dev0+offset+0x265);
+	ODT_Control_Register = *ptr & 0xFFFFFFFF;
+
+	ptr = (long*)(dev0+offset+0x25D);	
+	Precharge_Register = *ptr & 0xFFFFFFFF;
+
+	ptr = (long*)(dev0+offset+0x252);
+	ACT_Register = *ptr & 0xFFFFFFFF;
+
+	ptr = (long*)(dev0+offset+0x258);
+	Read_Register = *ptr & 0xFFFFFFFF;
+
+	ptr = (long*)(dev0+offset+0x244);
+	Misc_Register = *ptr & 0xFFFFFFFF;
+
+	ptr = (long*)(dev0+offset+0x1E8);
+	Memory_Check = *ptr & 0xFFFFFFFF;	
 
 	//Determine DDR or DDR-II
 	
@@ -2459,8 +2669,12 @@ static struct pci_memory_controller controllers[] = {
 	{ 0x1039, 0x0745, "SiS 745",   0, poll_fsb_amd32, poll_timings_nothing, setup_nothing, poll_nothing },
 	{ 0x1039, 0x0748, "SiS 748",   0, poll_fsb_amd32, poll_timings_nothing, setup_nothing, poll_nothing },
 	{ 0x1039, 0x0655, "SiS 655",   0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x1039, 0x0656, "SiS 656",   0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },
 	{ 0x1039, 0x0648, "SiS 648",   0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x1039, 0x0649, "SiS 649",   0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },
 	{ 0x1039, 0x0661, "SiS 661",   0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x1039, 0x0671, "SiS 671",   0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x1039, 0x0672, "SiS 672",   0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },	
 
 	/* ALi */
 	{ 0x10b9, 0x1531, "Aladdin 4", 0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
@@ -2506,55 +2720,62 @@ static struct pci_memory_controller controllers[] = {
 	{ 0x1166, 0x0009, "CNB20LE",   0, poll_fsb_nothing, poll_timings_nothing, setup_cnb20, poll_nothing },
 
 	/* Intel */
-	{ 0x8086, 0x1130, "Intel i815",      0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x122d, "Intel i430fx",    0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x1237, "Intel i440fx",    0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x1250, "Intel i430hx",    0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x1A21, "Intel i840",      0, poll_fsb_nothing, poll_timings_nothing, setup_i840, poll_i840 },
-	{ 0x8086, 0x1A30, "Intel i845",      0, poll_fsb_p4, poll_timings_nothing, setup_i845, poll_i845 },
-	{ 0x8086, 0x2560, "Intel i845E/G/PE/GE", 0, poll_fsb_p4, poll_timings_nothing, setup_i845, poll_i845 },
-	{ 0x8086, 0x2500, "Intel i820",      0, poll_fsb_nothing, poll_timings_nothing, setup_i820, poll_i820 },
-	{ 0x8086, 0x2530, "Intel i850",      0, poll_fsb_p4, poll_timings_nothing, setup_i850, poll_i850 },
-	{ 0x8086, 0x2531, "Intel i860",      1, poll_fsb_nothing, poll_timings_nothing, setup_i860, poll_i860 },
-	{ 0x8086, 0x7030, "Intel i430vx",    0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x7120, "Intel i810",      0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x7122, "Intel i810",      0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x7124, "Intel i810e",     0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x7180, "Intel i440[le]x", 0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x7190, "Intel i440BX",    0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x7192, "Intel i440BX",    0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x71A0, "Intel i440gx",    0, poll_fsb_nothing, poll_timings_nothing, setup_i440gx, poll_i440gx },
-	{ 0x8086, 0x71A2, "Intel i440gx",    0, poll_fsb_nothing, poll_timings_nothing, setup_i440gx, poll_i440gx },
-	{ 0x8086, 0x84C5, "Intel i450gx",    0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x2540, "Intel E7500",     1, poll_fsb_p4, poll_timings_E750x, setup_iE7xxx, poll_iE7xxx },
-	{ 0x8086, 0x254C, "Intel E7501",     1, poll_fsb_p4, poll_timings_E750x, setup_iE7xxx, poll_iE7xxx },
-	{ 0x8086, 0x255d, "Intel E7205",     0, poll_fsb_p4, poll_timings_nothing, setup_iE7xxx, poll_iE7xxx },
-  { 0x8086, 0x3592, "Intel E7320",     0, poll_fsb_p4, poll_timings_E7520, setup_iE7520, poll_iE7520 },
-  { 0x8086, 0x2588, "Intel E7221",     1, poll_fsb_i925, poll_timings_i925, setup_i925, poll_iE7221 },
-  { 0x8086, 0x3590, "Intel E7520",     0, poll_fsb_p4, poll_timings_E7520, setup_iE7520, poll_nothing },
-  { 0x8086, 0x2600, "Intel E8500",     0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x2570, "Intel i848/i865", 0, poll_fsb_i875, poll_timings_i875, setup_i875, poll_nothing },
-	{ 0x8086, 0x2578, "Intel i875P",     0, poll_fsb_i875, poll_timings_i875, setup_i875, poll_i875 },
-	{ 0x8086, 0x2550, "Intel E7505",     0, poll_fsb_p4, poll_timings_nothing, setup_iE7xxx, poll_iE7xxx },
-	{ 0x8086, 0x3580, "Intel ",          0, poll_fsb_i855, poll_timings_i852, setup_nothing, poll_nothing },
-	{ 0x8086, 0x3340, "Intel i855PM",    0, poll_fsb_i855, poll_timings_i855, setup_nothing, poll_nothing },
-	{ 0x8086, 0x2580, "Intel i915P/G",   0, poll_fsb_i925, poll_timings_i925, setup_i925, poll_nothing },
-	{ 0x8086, 0x2590, "Intel i915PM/GM", 0, poll_fsb_i925, poll_timings_i925, setup_i925, poll_nothing },
-	{ 0x8086, 0x2584, "Intel i925X/XE",  0, poll_fsb_i925, poll_timings_i925, setup_i925, poll_iE7221 },
-	{ 0x8086, 0x2770, "Intel i945P/G", 	 0, poll_fsb_i945, poll_timings_i925, setup_i925, poll_nothing },
-	{ 0x8086, 0x2774, "Intel i955X", 		 0, poll_fsb_i945, poll_timings_i925, setup_i925, poll_nothing},
-	{ 0x8086, 0x277C, "Intel i975X", 		 0, poll_fsb_i975, poll_timings_i925, setup_i925, poll_nothing},
-	{ 0x8086, 0x27A0, "Intel P965/G965", 0, poll_fsb_i965, poll_timings_i925, setup_i925, poll_nothing},
-	{ 0x8086, 0x2790, "Intel Q963/Q965", 0, poll_fsb_i965, poll_timings_i925, setup_i925, poll_nothing},	
-	{ 0x8086, 0x29B0, "Intel Q35", 	 		 0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
-	{ 0x8086, 0x29C0, "Intel P35/G33", 	 0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
-	{ 0x8086, 0x29D0, "Intel Q33",	  	 0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
-	{ 0x8086, 0x29E0, "Intel X38/X48", 	 0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},			
-	{ 0x8086, 0x4001, "Intel 5400A", 		 0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing},		
-	{ 0x8086, 0x4003, "Intel 5400B", 		 0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing},		
-	{ 0x8086, 0x25D8, "Intel 5000P", 		 0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing},		
-	{ 0x8086, 0x25D4, "Intel 5000V", 		 0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing},	
-	{ 0x8086, 0x25C0, "Intel 5000Z", 		 0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing}		
+	{ 0x8086, 0x1130, "Intel i815",      		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x122d, "Intel i430fx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x1235, "Intel i430mx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x1237, "Intel i440fx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x1250, "Intel i430hx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x1A21, "Intel i840",      		0, poll_fsb_nothing, poll_timings_nothing, setup_i840, poll_i840 },
+	{ 0x8086, 0x1A30, "Intel i845",      		0, poll_fsb_p4, poll_timings_nothing, setup_i845, poll_i845 },
+	{ 0x8086, 0x2560, "Intel i845E/G/PE/GE",0, poll_fsb_p4, poll_timings_nothing, setup_i845, poll_i845 },
+	{ 0x8086, 0x2500, "Intel i820",      		0, poll_fsb_nothing, poll_timings_nothing, setup_i820, poll_i820 },
+	{ 0x8086, 0x2530, "Intel i850",      		0, poll_fsb_p4, poll_timings_nothing, setup_i850, poll_i850 },
+	{ 0x8086, 0x2531, "Intel i860",      		1, poll_fsb_nothing, poll_timings_nothing, setup_i860, poll_i860 },
+	{ 0x8086, 0x7030, "Intel i430vx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x7100, "Intel i430tx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x7120, "Intel i810",      		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x7122, "Intel i810",      		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x7124, "Intel i810e",     		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x7180, "Intel i440[le]x", 		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x7190, "Intel i440BX",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x7192, "Intel i440BX",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x71A0, "Intel i440gx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_i440gx, poll_i440gx },
+	{ 0x8086, 0x71A2, "Intel i440gx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_i440gx, poll_i440gx },
+	{ 0x8086, 0x84C5, "Intel i450gx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x2540, "Intel E7500",     		1, poll_fsb_p4, poll_timings_E750x, setup_iE7xxx, poll_iE7xxx },
+	{ 0x8086, 0x254C, "Intel E7501",     		1, poll_fsb_p4, poll_timings_E750x, setup_iE7xxx, poll_iE7xxx },
+	{ 0x8086, 0x255d, "Intel E7205",     		0, poll_fsb_p4, poll_timings_nothing, setup_iE7xxx, poll_iE7xxx },
+  { 0x8086, 0x3592, "Intel E7320",     		0, poll_fsb_p4, poll_timings_E7520, setup_iE7520, poll_iE7520 },
+  { 0x8086, 0x2588, "Intel E7221",     		1, poll_fsb_i925, poll_timings_i925, setup_i925, poll_iE7221 },
+  { 0x8086, 0x3590, "Intel E7520",     		0, poll_fsb_p4, poll_timings_E7520, setup_iE7520, poll_nothing },
+  { 0x8086, 0x2600, "Intel E8500",     		0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x2570, "Intel i848/i865", 		0, poll_fsb_i875, poll_timings_i875, setup_i875, poll_nothing },
+	{ 0x8086, 0x2578, "Intel i875P",     		0, poll_fsb_i875, poll_timings_i875, setup_i875, poll_i875 },
+	{ 0x8086, 0x2550, "Intel E7505",     		0, poll_fsb_p4, poll_timings_nothing, setup_iE7xxx, poll_iE7xxx },
+	{ 0x8086, 0x3580, "Intel ",          		0, poll_fsb_i855, poll_timings_i852, setup_nothing, poll_nothing },
+	{ 0x8086, 0x3340, "Intel i855PM",    		0, poll_fsb_i855, poll_timings_i855, setup_nothing, poll_nothing },
+	{ 0x8086, 0x2580, "Intel i915P/G",   		0, poll_fsb_i925, poll_timings_i925, setup_i925, poll_nothing },
+	{ 0x8086, 0x2590, "Intel i915PM/GM", 		0, poll_fsb_i925, poll_timings_i925, setup_i925, poll_nothing },
+	{ 0x8086, 0x2584, "Intel i925X/XE",  		0, poll_fsb_i925, poll_timings_i925, setup_i925, poll_iE7221 },
+	{ 0x8086, 0x2770, "Intel i945P/G", 	 		0, poll_fsb_i945, poll_timings_i925, setup_i925, poll_nothing },
+	{ 0x8086, 0x27A0, "Intel i945GM/PM", 		0, poll_fsb_i945, poll_timings_i925, setup_i925, poll_nothing },
+	{ 0x8086, 0x27AC, "Intel i945GME", 	 		0, poll_fsb_i945, poll_timings_i925, setup_i925, poll_nothing },
+	{ 0x8086, 0x2774, "Intel i955X", 		 		0, poll_fsb_i945, poll_timings_i925, setup_i925, poll_nothing},
+	{ 0x8086, 0x277C, "Intel i975X", 		 		0, poll_fsb_i975, poll_timings_i925, setup_i925, poll_nothing},
+	{ 0x8086, 0x2970, "Intel i946PL/GZ", 		0, poll_fsb_i965, poll_timings_i965, setup_p35, poll_nothing},
+	{ 0x8086, 0x2990, "Intel Q963/Q965", 		0, poll_fsb_i965, poll_timings_i965, setup_p35, poll_nothing},
+	{ 0x8086, 0x29A0, "Intel P965/G965", 		0, poll_fsb_i965, poll_timings_i965, setup_p35, poll_nothing},
+	{ 0x8086, 0x2A00, "Intel GM965/GL960", 	0, poll_fsb_im965, poll_timings_im965, setup_p35, poll_nothing},
+	{ 0x8086, 0x2A10, "Intel GME965/GLE960",0, poll_fsb_im965, poll_timings_im965, setup_p35, poll_nothing},	
+	{ 0x8086, 0x29B0, "Intel Q35", 	 		 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
+	{ 0x8086, 0x29C0, "Intel P35/G33", 	 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
+	{ 0x8086, 0x29D0, "Intel Q33",	  	 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
+	{ 0x8086, 0x29E0, "Intel X38/X48", 	 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},			
+	{ 0x8086, 0x4001, "Intel 5400A", 		 		0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing},		
+	{ 0x8086, 0x4003, "Intel 5400B", 		 		0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing},		
+	{ 0x8086, 0x25D8, "Intel 5000P", 		 		0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing},		
+	{ 0x8086, 0x25D4, "Intel 5000V", 		 		0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing},	
+	{ 0x8086, 0x25C0, "Intel 5000Z", 		 		0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing}		
 };	
 
 static void print_memory_controller(void)

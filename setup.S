@@ -30,6 +30,34 @@ start:
 	lgdt	gdt_48 - start	# load gdt with whatever appropriate
 
 # that was painless, now we enable A20
+# start from grub-a20.patch
+	/*
+	* try to switch gateA20 using PORT92, the "Fast A20 and Init"
+	* register
+	*/
+	mov	$0x92, %dx
+	inb	%dx, %al
+	/* skip the port92 code if it's unimplemented (read returns 0xff) */
+	cmpb	$0xff, %al
+	jz	alt_a20_done
+	
+	/* set or clear bit1, the ALT_A20_GATE bit */
+	movb	4(%esp), %ah
+	testb	%ah, %ah
+	jz	alt_a20_cont1
+	orb	$2, %al
+	jmp	alt_a20_cont2
+alt_a20_cont1:
+	and	$0xfd, %al
+
+	/* clear the INIT_NOW bit; don't accidently reset the machine */
+alt_a20_cont2:
+	and	$0xfe, %al
+	outb	%al, %dx
+
+alt_a20_done:
+# end from grub-a20.patch
+
 	call    empty_8042
 
 	movb	$0xD1, %al	# command write
@@ -67,6 +95,9 @@ data32	ljmp	$KERNEL_CS, $(TSTLOAD <<4)	# jmp offset 2000 of segment 0x10 (cs)
 empty_8042:
 	call	delay
 	inb	$0x64, %al	# 8042 status port
+	cmpb	$0xff, %al	# from grub-a20-patch, skip if not impl
+	jz	empty_8042_ret
+		
 	testb	$1, %al		# output buffer?
 	jz	no_output
 	call	delay
@@ -76,6 +107,7 @@ empty_8042:
 no_output:
 	testb	$2, %al		# is input buffer full?
 	jnz	empty_8042	# yes - loop
+empty_8042_ret:
 	ret
 #
 # Delay is needed after doing i/o

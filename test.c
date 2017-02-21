@@ -4,7 +4,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
- * MemTest86+ V2.00 Specific code (GPL V2.0)
+ * MemTest86+ V2.01 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.x86-secret.com - http://www.memtest.org
  */

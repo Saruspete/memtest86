@@ -4,7 +4,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
- * MemTest86+ V2.00 Specific code (GPL V2.0)
+ * MemTest86+ V2.01 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.x86-secret.com - http://www.memtest.org
  */
@@ -22,87 +22,7 @@ void poll_errors();
 
 static void update_err_counts(void);
 static void print_err_counts(void);
-static void common_err();
 static int syn, chan, len=1;
-
-/*
- * Display data error message. Don't display duplicate errors.
- */
-void error(ulong *adr, ulong good, ulong bad)
-{
-	ulong xor;
-
-	xor = good ^ bad;
-#ifdef USB_WAR
-	/* Skip any errrors that appear to be due to the BIOS using location
-	 * 0x4e0 for USB keyboard support.  This often happens with Intel
-         * 810, 815 and 820 chipsets.  It is possible that we will skip
-	 * a real error but the odds are very low.
-	 */
-	if ((ulong)adr == 0x4e0 || (ulong)adr == 0x410) {
-		return;
-	}
-#endif
-	common_err(adr, good, bad, xor, 0);
-}
-
-/*
- * Display address error message.
- * Since this is strictly an address test, trying to create BadRAM
- * patterns does not make sense.  Just report the error.
- */
-void ad_err1(ulong *adr1, ulong *mask, ulong bad, ulong good)
-{
-	common_err(adr1, good, bad, (ulong)mask, 1);
-}
-
-/*
- * Display address error message.
- * Since this type of address error can also report data errors go
- * ahead and generate BadRAM patterns.
- */
-void ad_err2(ulong *adr, ulong bad)
-{
-	common_err(adr, (ulong)adr, bad, ((ulong)adr) ^ bad, 0);
-}
-
-static void update_err_counts(void)
-{
-	if (beepmode){
-		beep(600);
-		beep(1000);
-	}
-	
-	if (v->pass && v->ecount == 0) {
-		cprint(LINE_MSG, COL_MSG,
-			"                                            ");
-	}
-	++(v->ecount);
-	tseq[v->test].errors++;
-		
-}
-
-static void print_err_counts(void)
-{
-	int i;
-	char *pp;
-
-	if ((v->ecount > 4096) && (v->ecount % 256 != 0)) return;
-
-	dprint(LINE_INFO, COL_ERR, v->ecount, 6, 0);
-	dprint(LINE_INFO, COL_ECC_ERR, v->ecc_ecount, 6, 0);
-
-	/* Paint the error messages on the screen red to provide a vivid */
-	/* indicator that an error has occured */ 
-	if ((v->printmode == PRINTMODE_ADDRESSES ||
-			v->printmode == PRINTMODE_PATTERNS) &&
-			v->msg_line < 24) {
-		for(i=0, pp=(char *)((SCREEN_ADR+v->msg_line*160+1));
-				 i<76; i++, pp+=2) {
-			*pp = 0x47;
-		}
-	}
-}
 
 /*
  * Print an individual error
@@ -358,6 +278,86 @@ void common_err( ulong *adr, ulong good, ulong bad, ulong xor, int type)
 		break;
 	}
 }
+
+/*
+ * Display data error message. Don't display duplicate errors.
+ */
+void error(ulong *adr, ulong good, ulong bad)
+{
+	ulong xor;
+
+	xor = good ^ bad;
+#ifdef USB_WAR
+	/* Skip any errrors that appear to be due to the BIOS using location
+	 * 0x4e0 for USB keyboard support.  This often happens with Intel
+         * 810, 815 and 820 chipsets.  It is possible that we will skip
+	 * a real error but the odds are very low.
+	 */
+	if ((ulong)adr == 0x4e0 || (ulong)adr == 0x410) {
+		return;
+	}
+#endif
+	common_err(adr, good, bad, xor, 0);
+}
+
+/*
+ * Display address error message.
+ * Since this is strictly an address test, trying to create BadRAM
+ * patterns does not make sense.  Just report the error.
+ */
+void ad_err1(ulong *adr1, ulong *mask, ulong bad, ulong good)
+{
+	common_err(adr1, good, bad, (ulong)mask, 1);
+}
+
+/*
+ * Display address error message.
+ * Since this type of address error can also report data errors go
+ * ahead and generate BadRAM patterns.
+ */
+void ad_err2(ulong *adr, ulong bad)
+{
+	common_err(adr, (ulong)adr, bad, ((ulong)adr) ^ bad, 0);
+}
+
+static void update_err_counts(void)
+{
+	if (beepmode){
+		beep(600);
+		beep(1000);
+	}
+	
+	if (v->pass && v->ecount == 0) {
+		cprint(LINE_MSG, COL_MSG,
+			"                                            ");
+	}
+	++(v->ecount);
+	tseq[v->test].errors++;
+		
+}
+
+static void print_err_counts(void)
+{
+	int i;
+	char *pp;
+
+	if ((v->ecount > 4096) && (v->ecount % 256 != 0)) return;
+
+	dprint(LINE_INFO, COL_ERR, v->ecount, 6, 0);
+	dprint(LINE_INFO, COL_ECC_ERR, v->ecc_ecount, 6, 0);
+
+	/* Paint the error messages on the screen red to provide a vivid */
+	/* indicator that an error has occured */ 
+	if ((v->printmode == PRINTMODE_ADDRESSES ||
+			v->printmode == PRINTMODE_PATTERNS) &&
+			v->msg_line < 24) {
+		for(i=0, pp=(char *)((SCREEN_ADR+v->msg_line*160+1));
+				 i<76; i++, pp+=2) {
+			*pp = 0x47;
+		}
+	}
+}
+
 
 /*
  * Print an ecc error

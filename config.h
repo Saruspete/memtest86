@@ -24,6 +24,9 @@
 /* BEEP_MODE - Beep on error. Default off, Change to 1 to enable */
 #define BEEP_MODE 0
 
+/* BEEP_END_NO_ERROR - Beep at end of each pass without error. Default off, Change to 1 to enable */
+#define BEEP_END_NO_ERROR 0
+
 /* SCRN_DEBUG - extra check for SCREEN_BUFFER
  */ 
 /* #define SCRN_DEBUG */

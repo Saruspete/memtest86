@@ -26,6 +26,10 @@ _boot:
 # ld86 requires an entry symbol. This may as well be the usual one.
 .globl	_main
 _main:
+  movb  $0x01, %ah      # turn off the cursor
+  movb  $0x00, %bh
+  movw  $0x2000, %cx
+  int   $0x10 
 	movw	$BOOTSEG, %ax
 	movw	%ax, %ds
 	movw	$INITSEG, %ax

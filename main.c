@@ -3,20 +3,21 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady
  * ----------------------------------------------------
- * MemTest86+ V2.00 Specific code (GPL V2.0)
+ * MemTest86+ V2.01 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.canardplus.com - http://www.memtest.org
  */
 
 #include "test.h"
 #include "defs.h"
+#include "config.h"
 #undef TEST_TIMES
 #define DEFTESTS 9
 
 extern void bzero();
 
 const struct tseq tseq[] = {
-	{0,  5,  3,   0, 0, "[Address test, walking ones, uncached]"},
+	{1,  5,  3,   0, 0, "[Address test, walking ones, uncached]"},
 	{1,  6,  3,   2, 0, "[Address test, own address]           "},
 	{1,  0,  3,  14, 0, "[Moving inversions, ones & zeros]     "},
 	{1,  1,  2,  80, 0, "[Moving inversions, 8 bit pattern]    "},
@@ -24,7 +25,7 @@ const struct tseq tseq[] = {
 	{1,  7, 64,  66, 0, "[Block move, 64 moves]                "},
 	{1,  2,  2, 320, 0, "[Moving inversions, 32 bit pattern]   "},
 	{1,  9, 40,	120, 0, "[Random number sequence]              "},
-	{1,  3,  4, 1920, 0,"[Modulo 20, random pattern]           "},
+	{1,  3,  2, 360, 0, "[Modulo 20, random pattern]           "},
 	{1,  8,  1,		2, 0, "[Bit fade test, 90 min, 2 patterns]   "},
 	{0,  0,  0,   0, 0, NULL}
 };
@@ -449,6 +450,12 @@ void do_test(void)
 			if (v->ecount == 0 && v->testsel < 0) {
 			    cprint(LINE_MSG, COL_MSG,
 				"Pass complete, no errors, press Esc to exit");
+				if(BEEP_END_NO_ERROR) {
+					beep(1000);
+					beep(2000);
+					beep(1000);
+					beep(2000);
+				}
 			}
 		}
 		

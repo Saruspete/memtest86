@@ -77,7 +77,7 @@ static struct pci_smbus_controller smbcontrollers[] = {
 {0x8086, 0x266A, "Intel ICH6", ich5_get_smb, ich5_read_spd},
 {0x8086, 0x24D3, "Intel ICH5", ich5_get_smb, ich5_read_spd},
 {0x8086, 0x24C3, "Intel ICH4", ich5_get_smb, ich5_read_spd},
-{0x8086, 0x24A4, "Intel 6300ESB", ich5_get_smb, ich5_read_spd},
+{0x8086, 0x25A4, "Intel 6300ESB", ich5_get_smb, ich5_read_spd},
 {0x8086, 0x269B, "Intel ESB2", ich5_get_smb, ich5_read_spd},
 {0, 0, "", NULL, NULL}
 };
