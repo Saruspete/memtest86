@@ -5,7 +5,7 @@
  * ----------------------------------------------------
  * MemTest86+ V2.00 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
- * http://www.x86-secret.com - http://www.memtest.org
+ * http://www.canardpc.com - http://www.memtest.org
  */
 
 
@@ -54,15 +54,15 @@ typedef unsigned long ulong;
 #define SCREEN_END_ADR  (SCREEN_ADR + 80*25*2)
 
 #define TITLE_WIDTH	28
-#define LINE_TIME	10
+#define LINE_TIME	11
 #define COL_TIME	0
 #define LINE_TST	2
 #define LINE_RANGE	3
 #define LINE_CPU	1
 #define COL_MID		30
-#define LINE_PAT        4
+#define LINE_PAT  4
 #define COL_PAT		41
-#define LINE_INFO	10
+#define LINE_INFO	11
 #define COL_CACHE_TOP   13
 #define COL_RESERVED    22
 #define COL_MMAP	29
@@ -72,8 +72,8 @@ typedef unsigned long ulong;
 #define COL_PASS	56
 #define COL_ERR		63
 #define COL_ECC_ERR	72
-#define LINE_HEADER	12
-#define LINE_SCROLL	14
+#define LINE_HEADER	13
+#define LINE_SCROLL	15
 #define BAR_SIZE	(78-COL_MID-9)
 #define LINE_MSG	18
 #define COL_MSG		18
@@ -177,8 +177,8 @@ unsigned long page_of(void *ptr);
 ulong memspeed(ulong src, ulong len, int iter, int type);
 ulong correct_tsc(ulong el_org);
 
-#define PRINTMODE_SUMMARY   0
-#define PRINTMODE_ADDRESSES 1
+#define PRINTMODE_SUMMARY   1
+#define PRINTMODE_ADDRESSES 0
 #define PRINTMODE_PATTERNS  2
 #define PRINTMODE_NONE      3
 #define PRINTMODE_DMI      	4
@@ -290,7 +290,7 @@ struct err_info {
 #define X86_FEATURE_PAE		(0*32+ 6) /* Physical Address Extensions */
 #define MAX_MEM_SEGMENTS E820MAX
 
-/* Define common variables accross relocations of memtest86 */
+/* Define common variables accross relocations of memtest86+ */
 struct vars {
 	int test;
 	int pass;

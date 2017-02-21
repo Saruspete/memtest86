@@ -3,9 +3,9 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
- * MemTest86+ V2.01 Specific code (GPL V2.0)
+ * MemTest86+ V2.10 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
- * http://www.canardplus.com - http://www.memtest.org
+ * http://www.canardpc.com - http://www.memtest.org
  */
 
 #include "test.h"
@@ -32,7 +32,7 @@ ulong end_low, end_high;
 ulong cal_low, cal_high;
 ulong extclock;
 
-int l1_cache, l2_cache;
+int l1_cache, l2_cache, l3_cache;
 int tsc_invariable = 0;
 
 ulong memspeed(ulong src, ulong len, int iter, int type);
@@ -63,7 +63,7 @@ static void display_init(void)
 	for(i=0, pp=(char *)(SCREEN_ADR+1); i<TITLE_WIDTH; i++, pp+=2) {
 		*pp = 0x20;
 	}
-	cprint(0, 0, "      Memtest86  v2.01      ");
+	cprint(0, 0, "      Memtest86  v2.10      ");
 
 	for(i=0, pp=(char *)(SCREEN_ADR+1); i<2; i++, pp+=30) {
 		*pp = 0xA4;
@@ -146,9 +146,10 @@ void init(void)
 
 	cprint(LINE_CPU+1, 0, "L1 Cache: Unknown ");
 	cprint(LINE_CPU+2, 0, "L2 Cache: Unknown ");
-	cprint(LINE_CPU+3, 0, "Memory  : ");
-	aprint(LINE_CPU+3, 10, v->test_pages);
-	cprint(LINE_CPU+4, 0, "Chipset : ");
+	cprint(LINE_CPU+3, 0, "L3 Cache:       None  ");
+	cprint(LINE_CPU+4, 0, "Memory  :                   |-------------------------------------------------");
+	aprint(LINE_CPU+4, 10, v->test_pages);
+	cprint(LINE_CPU+5, 0, "Chipset : ");
 
 	cpu_type();
 
@@ -170,6 +171,7 @@ void init(void)
 	cprint(LINE_INFO, COL_PASS, "    0");
 	cprint(LINE_INFO, COL_ERR, "     0");
 	cprint(LINE_INFO+1, 0, " -----------------------------------------------------------------------------");
+					
 
 	for(i=0; i < 5; i++) {
 		cprint(i, COL_MID-2, "| ");
@@ -180,6 +182,7 @@ void init(void)
 	v->printmode=PRINTMODE_ADDRESSES;
 	v->numpatn=0;
 	find_ticks();
+
 }
 
 #define FLAT 0
@@ -323,7 +326,7 @@ unsigned long page_of(void *addr)
 void cpu_type(void)
 {
 	int i, off=0;
-	int l1_cache=0, l2_cache=0;
+	int l1_cache=0, l2_cache=0, l3_cache=0;
 	ulong speed;
 
 	v->rdtsc = 0;
@@ -506,7 +509,6 @@ void cpu_type(void)
 			break;
 		case 15:
 			l1_cache = cpu_id.cache_info[3];
-			l1_cache += cpu_id.cache_info[7];
 			l2_cache = (cpu_id.cache_info[11] << 8);
 			l2_cache += cpu_id.cache_info[10];
 			switch(cpu_id.model) {
@@ -554,7 +556,10 @@ void cpu_type(void)
 				off = 16;
 				break;
 			case 2:
-				cprint(LINE_CPU, 0, "AMD Phenom X4");
+				l3_cache = (cpu_id.cache_info[15] << 8);
+				l3_cache += (cpu_id.cache_info[14] >> 2);
+				l3_cache *= 512;
+				cprint(LINE_CPU, 0, "AMD K10 CPU @");
 				off = 13;				
 				break;				
 			}
@@ -624,18 +629,20 @@ void cpu_type(void)
 				case 0x6:
 				case 0xa:
 				case 0x66:
-					l1_cache += 8;
+					l1_cache = 8;
 					break;
 				case 0x8:
 				case 0xc:
 				case 0x67:
 				case 0x60:
-					l1_cache += 16;
+					l1_cache = 16;
 					break;
+				case 0x9:
+				case 0xd:
 				case 0x68:
 				case 0x2c:
 				case 0x30:
-					l1_cache += 32;
+					l1_cache = 32;
 					break;
 				case 0x40:
 					l2_cache = 0;
@@ -649,10 +656,12 @@ void cpu_type(void)
 				case 0x3a:
 					l2_cache = 192;
 					break;
+				case 0x21:
 				case 0x42:
 				case 0x7a:
 				case 0x82:
 				case 0x3c:
+				case 0x3f:
 					l2_cache = 256;
 					break;
 				case 0x3d:
@@ -664,6 +673,7 @@ void cpu_type(void)
 				case 0x86:
 				case 0x3e:
 				case 0x7f:
+				case 0x80:
 					l2_cache = 512;
 					break;
 				case 0x44:
@@ -687,6 +697,25 @@ void cpu_type(void)
 				case 0x4e:
 					l2_cache = 6144;
 					break;
+				case 0xd1:
+				case 0xd6:
+					l3_cache = 1024;
+					break;
+				case 0xd2:
+				case 0xd7:
+				case 0xdc:
+				case 0xe2:
+					l3_cache = 2048;
+					break;
+				case 0xd8:
+				case 0xdd:
+				case 0xe3:
+					l3_cache = 4096;
+					break;
+				case 0xde:
+				case 0xe4:
+					l3_cache = 8192;
+					break;				
 				}
 			}
 
@@ -726,6 +755,11 @@ void cpu_type(void)
 					off = 10;
 					break;
 				case 5:
+				if (((cpu_id.ext >> 16) & 0xF) != 0) {
+					cprint(LINE_CPU, 0, "Intel EP80579");
+					if (l2_cache == 0) { l2_cache = 256; }
+					off = 13;
+				} else {
 					if (l2_cache == 0) {
 						cprint(LINE_CPU, 0, "Celeron");
 						off = 7;
@@ -733,13 +767,9 @@ void cpu_type(void)
 						cprint(LINE_CPU, 0, "Pentium II");
 						off = 10;
 					}
+				 }
 					break;
 				case 6:
-					if (((cpu_id.ext >> 16) & 0xF) != 0) {
-						tsc_invariable = 1;
-						cprint(LINE_CPU, 0, "Intel Nehalem");
-						off = 13;
-					} else {
 						if (l2_cache == 128) {
 							cprint(LINE_CPU, 0, "Celeron");
 							off = 7;
@@ -747,11 +777,9 @@ void cpu_type(void)
 							cprint(LINE_CPU, 0, "Pentium II");
 							off = 10;
 						}
-					}
 					break;
 				case 7:
 				case 8:
-				case 10:
 				case 11:
 					if (((cpu_id.ext >> 16) & 0xF) != 0) {
 						tsc_invariable = 1;
@@ -780,6 +808,21 @@ void cpu_type(void)
 					}
 					off = 16;
 					break;
+				case 10:
+					if (((cpu_id.ext >> 16) & 0xF) != 0) {
+						tsc_invariable = 1;
+							cprint(LINE_CPU, 0, "Intel Core i7");
+							off = 13;
+						} else {
+							cprint(LINE_CPU, 0, "Pentium III Xeon");
+							off = 16;
+						}					
+					break;
+				case 12:
+					l1_cache = 24;
+					cprint(LINE_CPU, 0, "Atom (0.045)");
+					off = 12;
+					break;					
 				case 13:
 					if (l2_cache == 1024) {
 						cprint(LINE_CPU, 0, "Celeron M (0.09)");
@@ -873,6 +916,8 @@ void cpu_type(void)
 	/* VIA/Cyrix/Centaur Processors with CPUID */
 	case 'C':
 		if ( cpu_id.vend_id[1] == 'e' ) {	/* CentaurHauls */
+			l1_cache = cpu_id.cache_info[3] + cpu_id.cache_info[7];
+			l2_cache = cpu_id.cache_info[11];
 			switch(cpu_id.type){
 			case 5:
 				cprint(LINE_CPU, 0, "Centaur 5x86");
@@ -890,21 +935,25 @@ void cpu_type(void)
 						}
 						break;
 					case 10:
-						cprint(LINE_CPU, 0, "VIA Esther (C5J)");
+						cprint(LINE_CPU, 0, "VIA C7 (C5J)");
+						l1_cache = 64;
+						l2_cache = 128;
 						off = 16;
 						break;
 					case 13:
 						cprint(LINE_CPU, 0, "VIA C7 (C5R)");
+						l1_cache = 64;
+						l2_cache = 128;
 						off = 12;
 						break;
 					case 15:
 						cprint(LINE_CPU, 0, "VIA Isaiah (CN)");
+						l1_cache = 64;
+						l2_cache = 1024;
 						off = 15;
 						break;
 				}
 			}
-			l1_cache = cpu_id.cache_info[3] + cpu_id.cache_info[7];
-			l2_cache = cpu_id.cache_info[11];
 		} else {				/* CyrixInstead */
 			switch(cpu_id.type) {
 			case 5:
@@ -989,7 +1038,7 @@ void cpu_type(void)
 	if (l1_cache) {
 		cprint(LINE_CPU+1, 0, "L1 Cache:     K  ");
 		dprint(LINE_CPU+1, 11, l1_cache, 3, 0);
-		if ((speed=memspeed((ulong)mapping(0x100), (l1_cache / 4) * 1024, 50, MS_COPY))) {
+		if ((speed=memspeed((ulong)mapping(0x100), (l1_cache / 4) * 1024, 200, MS_COPY))) {
 			cprint(LINE_CPU+1, 16, "       MB/s");
 			dprint(LINE_CPU+1, 16, speed, 6, 0);
 		}
@@ -1009,23 +1058,41 @@ void cpu_type(void)
 		} else {
 			i = l1_cache;
 		}
-		if ((speed=memspeed((ulong)mapping(0x100), i*1024, 50, MS_COPY))) {
+		if ((speed=memspeed((ulong)mapping(0x100), i*1024, 200, MS_COPY))) {
 			cprint(LINE_CPU+2, 16, "       MB/s");
 			dprint(LINE_CPU+2, 16, speed, 6, 0);
 		}
 	}
 
-	/* Determine memory speed.  To find the memory spped we use */
-	/* A block size that is 5x the sum of the L1 and L2 caches */
-	i = (l2_cache + l1_cache) * 5;
+	/* Print out L3 cache info */
+	/* We measure the L3 cache speed by using a block size that is */
+	/* the size of the L2 cache. */
 
+	if (l3_cache) {
+		cprint(LINE_CPU+3, 0, "L3 Cache:     K  ");
+		dprint(LINE_CPU+3, 10, l3_cache, 4, 0);
+		dprint(LINE_CPU+3, 10, l3_cache, 4, 0);
+
+		i = l2_cache*2;
+
+		if ((speed=memspeed((ulong)mapping(0x100), i*1024, 150, MS_COPY))) {
+			cprint(LINE_CPU+3, 16, "       MB/s");
+			dprint(LINE_CPU+3, 16, speed, 6, 0);
+		}
+	}
+
+
+	/* Determine memory speed.  To find the memory speed we use */
+	/* A block size that is 5x the sum of the L1, L2 & L3 caches */
+	i = (l3_cache + l2_cache + l1_cache) * 5;
+		
 	/* Make sure that we have enough memory to do the test */
 	if ((1 + (i * 2)) > (v->plim_upper << 2)) {
 		i = ((v->plim_upper <<2) - 1) / 2;
 	}
-	if((speed = memspeed((ulong)mapping(0x100), i*1024, 40, MS_COPY))) {
-		cprint(LINE_CPU+3, 16, "       MB/s");
-		dprint(LINE_CPU+3, 16, speed, 6, 0);
+	if((speed = memspeed((ulong)mapping(0x100), i*1024, 50, MS_COPY))) {
+		cprint(LINE_CPU+4, 16, "       MB/s");
+		dprint(LINE_CPU+4, 16, speed, 6, 0);
 	}
 
 	/* Record the starting time */

@@ -61,6 +61,49 @@ static int ich5_read_spd(int dimmadr)
     }
     return 0;
 }
+
+static void us15w_get_smb(void)
+{
+    unsigned long x;
+    int result;
+    result = pci_conf_read(0, 0x1f, 0, 0x40, 2, &x);
+    if (result == 0) smbusbase = (unsigned short) x & 0xFFC0;
+}
+
+unsigned char us15w_smb_read_byte(unsigned char adr, unsigned char cmd)
+{
+    int l1, h1, l2, h2;
+    unsigned long long t;
+    //__outb(0x00, smbusbase + 1);			// reset SMBus Controller
+    //__outb(0x00, smbusbase + 6);
+    //while((__inb(smbusbase + 1) & 0x08) != 0);		// wait until ready
+    __outb(0x02, smbusbase + 0);    // Byte read
+    __outb(cmd, smbusbase + 5);     // Command
+    __outb(0x07, smbusbase + 1);    // Clear status
+    __outb((adr << 1) | 0x01, smbusbase + 4);   // DIMM address
+    __outb(0x12, smbusbase + 0);    // Start
+    //while (((__inb(smbusbase + 1) & 0x08) == 0)) {}	// wait til busy
+    rdtsc(l1, h1);
+    cprint(POP2_Y, POP2_X + 16, s + cmd % 8);	// progress bar
+    while (((__inb(smbusbase + 1) & 0x01) == 0) ||
+		((__inb(smbusbase + 1) & 0x08) != 0)) {	// wait til command finished
+	rdtsc(l2, h2);
+	t = ((h2 - h1) * 0xffffffff + (l2 - l1)) / v->clks_msec;
+	if (t > 10) break;			// break after 10ms
+    }
+    return __inb(smbusbase + 6);
+}
+
+static int us15w_read_spd(int dimmadr)
+{
+    int x;
+    spd[0] = us15w_smb_read_byte(0x50 + dimmadr, 0);
+    if (spd[0] == 0xff)	return -1;		// no spd here
+    for (x = 1; x < 256; x++) {
+	spd[x] = us15w_smb_read_byte(0x50 + dimmadr, (unsigned char) x);
+    }
+    return 0;
+}
     
 struct pci_smbus_controller {
     unsigned vendor;
@@ -71,6 +114,7 @@ struct pci_smbus_controller {
 };
 
 static struct pci_smbus_controller smbcontrollers[] = {
+{0x8086, 0x3A30, "Intel ICH10", ich5_get_smb, ich5_read_spd},
 {0x8086, 0x2930, "Intel ICH9", ich5_get_smb, ich5_read_spd},
 {0x8086, 0x283E, "Intel ICH8", ich5_get_smb, ich5_read_spd},
 {0x8086, 0x27DA, "Intel ICH7", ich5_get_smb, ich5_read_spd},
@@ -79,8 +123,11 @@ static struct pci_smbus_controller smbcontrollers[] = {
 {0x8086, 0x24C3, "Intel ICH4", ich5_get_smb, ich5_read_spd},
 {0x8086, 0x25A4, "Intel 6300ESB", ich5_get_smb, ich5_read_spd},
 {0x8086, 0x269B, "Intel ESB2", ich5_get_smb, ich5_read_spd},
+{0x8086, 0x8119, "Intel US15W", us15w_get_smb, us15w_read_spd},
+{0x8086, 0x5032, "Intel EP80579", ich5_get_smb, ich5_read_spd},
 {0, 0, "", NULL, NULL}
 };
+
 
 int find_smb_controller(void)
 {

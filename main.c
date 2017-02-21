@@ -5,7 +5,7 @@
  * ----------------------------------------------------
  * MemTest86+ V2.01 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
- * http://www.canardplus.com - http://www.memtest.org
+ * http://www.canardpc.com - http://www.memtest.org
  */
 
 #include "test.h"
@@ -222,6 +222,16 @@ void do_test(void)
 	if ((ulong)&_start > LOW_TEST_ADR) {
 		/* Relocated so we need to test all selected lower memory */
 		v->map[0].start = mapping(v->plim_lower);
+		
+#ifdef USB_WAR
+ /* We must not touch test below 0x500 memory beacuase
+  * BIOS USB support clobbers location 0x410 and 0x4e0
+  */
+	if ((ulong)v->map[0].start < 0x500) {
+    v->map[0].start = (ulong*)0x500;
+	}
+#endif
+
 		cprint(LINE_RANGE, COL_MID+28, " Relocated");
 	} else {
 		cprint(LINE_RANGE, COL_MID+28, "          ");

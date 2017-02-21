@@ -4,7 +4,7 @@
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
  * MemTest86+ V2.00 Specific code (GPL V2.0)
- * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
+ * By Samuel DEMEULEMEESTER, memtest@memtest.org
  * http://www.canardplus.com - http://www.memtest.org
 */
  
@@ -1017,7 +1017,7 @@ void serial_console_setup(char *param)
 	if (tty > 1)
 		return;   /* only ttyS0 and ttyS1 supported */
 
-	if (*option == '\0')
+	if (*option == '\0' || *option == ' ')
 		goto save_tty; /* no options given, just ttyS? */
 
 	if (*option != ',')
@@ -1033,7 +1033,7 @@ void serial_console_setup(char *param)
 	if (baud_rate == 0 || (115200 % baud_rate) != 0)
 		return;  /* wrong baud rate */
 
-	if (*end == '\0')
+	if (*end == '\0' || *end == ' ')
 		goto save_baud_rate;  /* no more options given */
 
 	switch (toupper(*end)) {
@@ -1052,7 +1052,7 @@ void serial_console_setup(char *param)
 	}
 
 	end++;
-	if (*end == '\0')
+	if (*end == '\0' || *end == ' ')
 		goto save_parity;
 
 	/* word length (bits) */
@@ -1063,15 +1063,15 @@ void serial_console_setup(char *param)
 
 	end++;
 
-	if (*end != '\0')
+	if (*end != '\0' && *end != ' ')
 		return;  /* garbage at the end */
 
 	serial_bits = bits;
-	save_parity:
+ save_parity:
 	serial_parity = parity;
-	save_baud_rate:
+ save_baud_rate:
 	serial_baud_rate = (int) baud_rate;
-  save_tty:
+ save_tty:
 	serial_tty = (short) tty;
 	serial_cons = 1;
 }

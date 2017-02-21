@@ -11,7 +11,7 @@ FDISK=/dev/fd0
 AS=as -32
 CC=gcc
 
-CFLAGS=-Wall -march=i486 -m32 -Os -fomit-frame-pointer -fno-builtin -ffreestanding -fPIC
+CFLAGS= -fno-stack-protector -Wall -march=i486 -m32 -Os -fomit-frame-pointer -fno-builtin -ffreestanding -fPIC
 
 OBJS= head.o reloc.o main.o test.o init.o lib.o patn.o screen_buffer.o \
       config.o linuxbios.o memsize.o pci.o controller.o random.o extra.o \
@@ -65,3 +65,7 @@ install: all
 
 install-precomp:
 	dd <precomp.bin >$(FDISK) bs=8192
+	
+dos: all
+	cat mt86+_loader memtest.bin > memtest.exe
+

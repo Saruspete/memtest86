@@ -1,8 +1,5 @@
-			====================
-			= MemTest-86 v3.2  =
-			=   Nov 11, 2004   =
-			=   Chris Brady    =
-			====================
+Memtest86++ v2.10
+====================
 
 Table of Contents
 =================
@@ -16,42 +13,39 @@ Table of Contents
   8) Trouble-shooting Memory Errors
   9) Execution Time
  10) Memory Testing Philosophy
- 11) Memtest86 Test Algorithms
+ 11) Memtest86+ Test Algorithms
  12) Individual Test Descriptions
  13) Problem Reporting - Contact Information
  14) Known Problems
- 15) Planned Features List
- 16) Change Log
- 17) Donations
- 18) Acknowledgments
+
 
 
 1) Introduction
 ===============
-Memtest86 is thorough, stand alone memory test for Intel/AMD x86 architecture
+Memtest86+ is thorough, stand alone memory test for Intel/AMD x86 architecture
 systems.  BIOS based memory tests are only a quick check and often miss
-failures that are detected by Memtest86.
+failures that are detected by Memtest86+.
 
-For updates go to the Memtest86 web page:
+For updates go to the Memtest86+ web page:
 
-	http://www.memtest86.com
+	http://www.memtest.org
 
 
 2) Licensing
 ============
-Memtest86 is released under the terms of the Gnu Public License (GPL). Other
+Memtest86+ is released under the terms of the Gnu Public License (GPL). Other
 than the provisions of the GPL there are no restrictions for use, private or
 commercial.  See: http://www.gnu.org/licenses/gpl.html for details.
-Explicit permission for inclusion of Memtest86 in software compilations and
+Explicit permission for inclusion of Memtest86+ in software compilations and
 publications is hereby granted.
 
 
 3) Installation (Linux Only)
 ============================
-Memtest86 is a stand alone program and can be loaded from either a disk
+Memtest86+ is a stand alone program and can be loaded from either a disk
 partition or from a floppy disk.
 
-To build Memtest86:
+To build Memtest86+:
    1) Review the Makefile and adjust options as needed.
    2) Type "make"
 
@@ -59,22 +53,22 @@ This creates a file named "memtest.bin" which is a bootable image.  This
 image file may be copied to a floppy disk or lilo may be used to boot this
 image from a hard disk partition.
 
-To create a Memtest86 bootdisk
+To create a Memtest86+ bootdisk
    1) Insert a blank write enabled floppy disk.
    2) As root, Type "make install"
 
 To boot from a disk partition via lilo
    1) Copy the image file to a permanent location (ie. /memtest).
    2) Add an entry in the lilo config file (usually /etc/lilo.conf) to boot
-      memtest86.  Only the image and label fields need to be specified. 
-      The following is a sample lilo entry for booting memtest86:
+      Memtest86+.  Only the image and label fields need to be specified. 
+      The following is a sample lilo entry for booting Memtest86+:
 
 	image = /memtest
 	label = memtest
 
    3) As root,  type "lilo"
 
-      At the lilo prompt enter memtest to boot memtest86.
+      At the lilo prompt enter memtest to boot Memtest86+.
 
 If you encounter build problems a binary image has been included (precomp.bin).
 To create a boot-disk with this pre-built image do the following:
@@ -84,19 +78,19 @@ To create a boot-disk with this pre-built image do the following:
 
 4) Serial Console
 =================
-Memtest86 can be used on PC's equipped with a serial port for the console.
+Memtest86+ can be used on PC's equipped with a serial port for the console.
 By default serial port console support is not enabled since it slows
 down testing.  To enable change the SERIAL_CONSOLE_DEFAULT define in
 config.h from a zero to a one.  The serial console baud rate may also
 be set in config.h with the SERIAL_BAUD_RATE define.  The other serial
 port settings are no parity, 8 data bits, 1 stop bit.  All of the features
-used by memtest86 are accessible via the serial console.  However, the
+used by Memtest86+ are accessible via the serial console.  However, the
 screen sometimes is garbled when the online commands are used.
 
 
 5) Online Commands
 ==================
-Memtest86 has a limited number of online commands.  Online commands
+Memtest86+ has a limited number of online commands.  Online commands
 provide control over caching, test selection, address range and error
 scrolling.  A help bar is displayed at the bottom of the screen listing
 the available on-line commands. 
@@ -131,19 +125,19 @@ it's use and also to communicate information to the operating system (ie.
 ACPI tables).  It is just as important to test these reserved memory blocks
 as it is for the remainder of memory.  For proper operation all of memory
 needs to function properly regardless of what the eventual use is.  For
-this reason Memtest86 has been designed to test as much memory as is
+this reason Memtest86+ has been designed to test as much memory as is
 possible.
  
 However, safely and reliably detecting all of the available memory has been
-problematic.  Versions of Memtest86 prior to v2.9 would probe to find where
+problematic.  Versions of Memtest86+ prior to v0.91 would probe to find where
 memory is. This works for the vast majority of motherboards but is not 100%
 reliable. Sometimes the memory size is incorrect and worse probing the wrong
 places can in some cases cause the test to hang or crash.  
 
-Starting in version 2.9 alternative methods are available for determining the
+Starting in version 0.91 alternative methods are available for determining the
 memory size. By default the test attempts to get the memory size from the
 BIOS using the "e820" method.  With "e820" the BIOS provides a table of memory
-segments and identifies what they will be used for.  By default Memtest86
+segments and identifies what they will be used for.  By default Memtest86+
 will test all of the ram marked as available and also the area reserved for
 the ACPI tables.  This is safe since the test does not use the ACPI tables
 and the "e820" specifications state that this memory may be reused after the
@@ -213,7 +207,7 @@ results.
 
 8) Trouble-shooting Memory Errors
 ================================
-Please be aware that not all errors reported by Memtest86 are due to
+Please be aware that not all errors reported by Memtest86+ are due to
 bad memory. The test implicitly tests the CPU, L1 and L2 caches as well as
 the motherboard.  It is impossible for the test to determine what causes
 the failure to occur.  Most failures will be due to a problem with memory.
@@ -263,9 +257,9 @@ module may work fine in one system and not in another.  This is not
 uncommon and is a source of confusion.  The components are not necessarily
 bad but certain combinations may need to be avoided.
 
-I am often asked about the reliability of errors reported by Mestest86.
+I am often asked about the reliability of errors reported by Memtest86+.
 In the vast majority of cases errors reported by the test are valid.
-There are some systems that cause Memtest86 to be confused about the size of
+There are some systems that cause Memtest86+ to be confused about the size of
 memory and it will try to test non-existent memory.  This will cause a large
 number of consecutive addresses to be reported as bad and generally there
 will be many bits in error.  If you have a relatively small number of
@@ -278,15 +272,15 @@ with marginal memory is risky and can result in data loss and even
 disk corruption.  You can be sure that Murphy will get you if you know
 about a memory error and ignore it.
 
-Memtest86 can not diagnose many types of PC failures.  For example a
+Memtest86+ can not diagnose many types of PC failures.  For example a
 faulty CPU that causes Windows to crash will most likely just cause
-Memtest86 to crash in the same way.
+Memtest86+ to crash in the same way.
 
 
 9) Execution Time
 ==================
-The time required for a complete pass of Memtest86 will vary greatly
-depending on CPU speed, memory speed and memory size. Memtest86 executes 
+The time required for a complete pass of Memtest86+ will vary greatly
+depending on CPU speed, memory speed and memory size. Memtest86+ executes 
 indefinitely.  The pass counter increments each time that all of the 
 selected tests have been run.  Generally a single pass is sufficient to 
 catch all but the most obscure errors. However, for complete confidence 
@@ -320,9 +314,9 @@ and manufacturers making this strategy impractical.  However, there
 are testing algorithms that can approximate this ideal strategy. 
 
 
-11) Memtest86 Test Algorithms
+11) Memtest86+ Test Algorithms
 =============================
-Memtest86 uses two algorithms that provide a reasonable approximation
+Memtest86+ uses two algorithms that provide a reasonable approximation
 of the ideal test strategy above.  The first of these strategies is called
 moving inversions.  The moving inversion test works as follows:
 
@@ -371,7 +365,7 @@ speed and thoroughness.
 
 12) Individual Test Descriptions
 ================================
-Memtest86 executes a series of numbered test sections to check for
+Memtest86+ executes a series of numbered test sections to check for
 errors.  These test sections consist of a combination of test
 algorithm, data pattern and caching. The execution order for these tests
 were arranged so that errors will be detected as rapidly as possible.
@@ -447,50 +441,6 @@ Test 9 [Bit fade test, 90 min, 2 patterns]
   sequence and must be run manually via the runtime configuration menu.
 
 
-13) Problem Reporting - Contact Information
-===========================================
-Due to the growing popularity of Memtest86 (more than 200,000 downloads per
-month) I have been inundated by, questions, feedback, problem reports and
-requests for enhancements. I simply do not have time to repond to ANY Memtest86
-emails. Bug reports and suggestions are welcome but will typically not be
-responded to.
-
-*** NOTE: *** The Keyword MEM86 must appear in the subject of all emails or
-the message will be automaticly deleted before it gets to me. This thanks to
-spam and viruses!
-
-Problems/Bugs:
-Before submitting a problem report please check the Known Problems section
-to see if this problem has already been reported.  Be sure to include the
-version number and also any details that may be relevant.
-
-Chris Brady, Email: bugs@memtest86.com
-
-With some PC's Memtest86 will just die with no hints as to what went wrong.
-Without any details it is impossible to fix these failures.  Fixing these
-problems will require debugging on your part. There is no point in reporting
-these failures unless you have a Linux system and would be willing to debug
-the failure.
-
-Enhancements:
-If you would like to request an enhancement please see if is already on
-the Planned Features List before sending your request.  All requests will
-be considered, but not all can be implemented.  If you are be interested in
-contributing code please contact me so that the integration can be
-co-ordinated.
-
-Chris Brady, Email: enhance@memtest86.com
-
-Questions:
-Unfortunately, I do not have time to respond to any questions or provide
-assistance with troubleshooting problems. Please read the Troubleshooting
-and Known Problems sections for assistance with problems. These sections have
-the answers for the questions that I have answers to. If there is not an
-answer for your problem in these sections it is probably not something I can
-help you with.
-
-
-
 14) Known Problems
 ==================
 Sometimes when booting from a floppy disk the following messages scroll up
@@ -503,12 +453,12 @@ on the screen:
 This the BIOS reporting floppy disk read errors.  Either re-write or toss
 the floppy disk.
 
-Memtest86 has no support for multiple CPUs.  Memtest86 should run
+Memtest86+ has no support for multiple CPUs.  Memtest86+ should run
 without problems, but it will only use one CPU.
 
-Memtest86 can not diagnose many types of PC failures.  For example a
+Memtest86+ can not diagnose many types of PC failures.  For example a
 faulty CPU that causes Windows to crash will most likely just cause
-Memtest86 to crash in the same way.
+Memtest86+ to crash in the same way.
 
 There have been numerous reports of errors in only tests 5 and 8 on Athlon
 systems.  Often the memory works in a different system or the vendor insists
@@ -518,333 +468,13 @@ memory timings on the motherboard will correct these errors.  In other
 cases the only option is to replace the memory with better quality, higher
 speed memory.  Don't buy cheap memory and expect it to work with an Athlon!
 
-Memtest86 supports all types of memory.  If fact the test has absolutely
+Memtest86+ supports all types of memory.  If fact the test has absolutely
 no knowledge of the memory type nor does it need to.  This not a problem
 or bug but is listed here due to the many questions I get about this issue.
 
 Changes in the compiler and loader have caused problems with
-Memtest86 resulting in both build failures and errors in execution.  A
+Memtest86+ resulting in both build failures and errors in execution.  A
 binary image (precomp.bin) of the test is included and may be used if
 problems are encountered.
 
-15) Planned Features List
-=========================
-This is a list of enhancements planned for future releases of Memtest86.
-There is no timetable for when these will be implemented, if ever.
 
-  - Option to allow printing of error information on an attached printer.
-  - Option to write error information to a floppy disk.
-  - Supply Memtest in RPM format.
-  - Read and display RAM SPD information.
-
-
-16) Change Log
-==============
-Enhancements in v3.2 (11/Nov/2004)
-
-  Added two new, highly effective tests that use random number patterns
-  (tests 4 and 6).
-
-  Reworked the online commands:
-	- Changed wording for better clarity
-	- Dropped Cache Mode menu
-
-  Updated CPU detection for newer AMD, Intel and Cyrix CPUs.
-
-  Reworked test sequence:
-	- Dropped ineffective non cached tests (Numbers 7-11) 
-	- Changed cache mode to cached for test 2 
-	- Fixed bug that did not allow tsome tests to be skipped
-	- Added bailout for Bit fade test
-
-  Error reports are highlighted in red to provide a more vivid error 
-  indication.
-	    
-  Added support for a large number of additional chipsets. (from Memtest86+
-  v1.30)
-
-  Added an advanced setup feature that with new chiset allows memory timings
-  to be altered from inside Memtest86. (from Memtest86+ v1.30)
-
-
-Enhancements in v3.1 (11/Mar/2004)
-
-   Added processor detection for newer AMD processors.
-
-   Added new "Bit Fade" extended test.
-
-   Fixed a complile time bug with gcc version 3.x.
-
-   E7500 memory controller ECC support
-
-   Added support for 16bit ECC syndromes
-
-   Option to keep the serial port baud rate of the boot loader
-
-
-Enhancements in v3.0 (22/May/2002) Provided by Eric Biederman
-
-   Testing of more than 2gb of memory is at last fixed (tested with 6Gb)
-
-   The infrastructure is to poll ecc error reporting chipset regisets,
-   and the support has been done for some chipsets.
-
-   Uses dynamic relocation information records to make itself PIC
-   instead of requiring 2 copies of memtest86 in the binary.
-
-   The serial console code does not do redundant writes to the serial port
-   Very little slow down at 9600 baud.
-
-   You can press ^l or just l to get a screen refresh, when you are
-   connecting and unconnecting a serial cable.
-
-   Netbooting is working again
-
-   LinuxBIOS support (To get the memory size)
-
-   Many bugfixes and code cleanup.
-
-Enhancements in v2.9 (29/Feb/2002)
-
-   The memory sizing code has been completely rewritten.  By default
-   Memtest86 gets a memory map from the BIOS that is now used to find 
-   available memory. A new online configuration option provides three
-   choices for how memory will be sized, including the old "probe" method.
-   The default mode generally will not test all of memory, but should be more
-   stable. See the "Memory Sizing" section for details.
-
-   Testing of more than 2gb of memory should now work.  A number of bugs
-   were found and corrected that prevented testing above 2gb.  Testing
-   with more than 2gb has been limited and there could be problems with a
-   full 4gb of memory.
-
-   Memory is divided into segments for testing.  This allow for frequent
-   progress updates and responsiveness to interactive commands.  The
-   memory segment size has been increased from 8 to 32mb.  This should
-   improve testing effectivness but progress reports will be less frequent.
-
-   Minor bug fixes.
-
-Enhancements in v2.8 (18/Oct/2001)
-   Eric Biederman reworked the build process making it far simpler and also
-   to produce a network bootable ELF image.
-
-   Re-wrote the memory and cache speed detection code.  Previously the
-   reported numbers were inaccurate for intel CPU's and completely wrong
-   for Athlon/Duron CPU's.
-
-   By default the serial console is disabled since this was slowing
-   down testing.
-
-   Added CPU detection for Pentium 4.
-
-   
-Enhancements in v2.7 (12/Jul/2001)
-   Expanded workaround for errors caused by BIOS USB keyboard support to
-   include test #5.
-
-   Re-worked L1 / L2 cache detection code to provide clearer reporting.
-
-   Fixed an obvious bug in the computation of cache and memory speeds.
-
-   Changed on-line menu to stay in the menu between option selections.
-
-   Fixed bugs in the test restart and redraw code.
-
-   Adjusted code size to fix compilation problems with RedHat 7.1.
-
-   Misc updates to the documentation.
-
-Enhancements in v2.6 (25/May/2001)
-   Added workaround for errors caused by BIOS USB keyboard support.
-
-   Fixed problems with reporting of 1 GHZ + processor speeds.
-
-   Fixed Duron cache detection.
-
-   Added screen buffer so that menus will work correctly from a serial
-   console.
-
-   The Memtest86 image is now built in ELF format.
-
-Enhancements in v2.5 (14/Dec/00)
-   Enhanced CPU and cache detection to correctly identify Duron CPU
-   and K6-III 1MB cache.
-
-   Added code to report cache-able memory size.
-
-   Added limited support for parity memory.
-
-   Support was added to allow use of on-line commands from a serial
-   port.
-
-   Dropped option for changing refresh rates.  This was not useful
-   and did not work on newer motherboards.
-
-   Improved fatal exception reporting to include a register and stack
-   dump.
-
-   The pass number is now displayed in the error report.
-
-   Fixed a bug that crashed the test when selecting one of the extended
-   tests.
-
-Enhancements in v2.4
-   The error report format was reworked for better clarity and now
-   includes a decimal address in megabytes.
-
-   A new memory move test was added (from Robert Redelmeier's CPU-Burn)
-
-   The test sequence and iterations were modified.
-
-   Fixed scrolling problems with the BadRAM patterns.
-
-
-Enhancements in v2.3
-   A progress meter was added to replace the spinner and dots.
-
-   Measurement and reporting of memory and cache performance  
-   was added.
-
-   Support for creating BadRAM patterns was added.
-
-   All of the test routines were rewritten in assembler to
-   improve both test performance and speed.
-
-   The screen layout was reworked to hopefully be more readable.
-
-   An error summary option was added to the online commands.
-
-
-Enhancements in v2.2
-   Added two new address tests
-
-   Added an on-line command for setting test address range
-
-   Optimized test code for faster execution (-O3, -funroll-loops and
-	-fomit-frame-pointer)
-
-   Added and elapsed time counter.
-
-   Adjusted menu options for better consistency
-
-
-Enhancements in v2.1
-   Fixed a bug in the CPU detection that caused the test to
-   hang or crash with some 486 and Cryrix CPU's
-
-   Added CPU detection for Cyrix CPU's
-
-   Extended and improved CPU detection for Intel and AMD CPU's
-
-   Added a compile time option (BIOS_MEMSZ) for obtaining the last
-   memory address from the BIOS.  This should fix problems with memory
-   sizing on certain motherboards.  This option is not enabled by default.
-   It may be enabled be default in a future release.
-
-Enhancements in v2.0
-   Added new Modulo-20 test algorithm.
-
-   Added a 32 bit shifting pattern to the moving inversions algorithm.
-
-   Created test sections to specify algorithm, pattern and caching.
-
-   Improved test progress indicators.
-
-   Created  popup menus for configuration.
-
-   Added menu for test selection.
-
-   Added CPU and cache identification.
-
-   Added a "bail out" feature to quit the current test when it does not
-   fit the test selection parameters.
-
-   Re-arranged the screen layout and colors.
-
-   Created local include files for I/O and serial interface definitions
-   rather than using the sometimes incompatible system include files. 
-
-   Broke up the "C" source code into four separate source modules.
-
-Enhancements in v1.5
-   Some additional changes were made to fix obscure memory sizing
-   problems.
-
-   The 4 bit wide data pattern was increased to 8 bits since 8 bit
-   wide memory chips are becoming more common.
-
-   A new test algorithm was added to improve detection of data
-   pattern sensitive errors. 
-
-
-Enhancements in v1.4
-   Changes to the memory sizing code to avoid problems with some
-   motherboards where memtest would find more memory than actually
-   exists.
-
-   Added support for a console serial port. (thanks to Doug Sisk)
-
-   On-line commands are now available for configuring Memtest86 on
-   the fly (see On-line Commands).
-	
-
-Enhancements in v1.3
-   Scrolling of memory errors is now provided.  Previously, only one screen
-   of error information was displayed.
-
-   Memtest86 can now be booted from any disk via lilo.
-
-   Testing of up to 4gb of memory has been fixed is now enabled by default.
-   This capability was clearly broken in v1.2a and should work correctly
-   now but has not been fully tested (4gb PC's are a bit rare).
-
-   The maximum memory size supported by the motherboard is now being
-   calculated correctly.  In previous versions there were cases where not
-   all of memory would be tested and the maximum memory size supported
-   was incorrect.
-
-   For some types of failures the good and bad values were reported to be
-   same with an Xor value of 0.  This has been fixed by retaining the data
-   read from memory and not re-reading the bad data in the error reporting
-   routine.
-
-   APM (advanced power management) is now disabled by Memtest86.  This
-   keeps the screen from blanking while the test is running.
-
-   Problems with enabling & disabling cache on some motherboards have been
-   corrected.
-
-
-17) Donations
-=============
-With considerable reluctance I am resorting to a low key solicitation for
-donations.  It never has been my intent to profit from this program and I am
-pleased that Memtest86 has been helpful.  However, the time required to
-support this program has grown significantly.  I also have the modest
-cost of hosting this web-site that I would like to recover.  So if you find
-Memtest86 useful and you feel inclined to make a small PayPal donation please
-do so.  Use "cbrady@memtest86.com" for the recipient.
-
-
-18) Acknowledgments
-===================
-Memtest86 was developed by Chris Brady with the resources and assistance
-listed below:
-
-- The initial versions of the source files bootsect.S, setup.S, head.S and
-  build.c are from the Linux 1.2.1 kernel and have been heavily modified.
-
-- Doug Sisk provided code to support a console connected via a serial port.
-
-- Code to create BadRAM patterns was provided by Rick van Rein.
-
-- Tests 5 and 8 are based on Robert Redelmeier's burnBX test.
-
-- Screen buffer code was provided by Jani Averbach.
-
-- Eric Biederman provided all of the feature content for version 3.0
-  plus many bugfixes and significant code cleanup.
-
-- Major enhancements to hardware detection and reporting in version 3.2
-  provided by Samuel Demeulemeester (from Memtest86+ v1.11).

@@ -3,9 +3,9 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
- * MemTest86+ V2.01 Specific code (GPL V2.0)
+ * MemTest86+ V2.10 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
- * http://www.x86-secret.com - http://www.memtest.org
+ * http://www.canardpc.com - http://www.memtest.org
  */
 
 #include "defs.h"
@@ -15,7 +15,8 @@
 #include "controller.h"
 
 int col, col2;
-
+int nhm_bus = 0x3F;
+	
 extern ulong extclock;
 extern struct cpu_ident cpu_id;
 
@@ -82,60 +83,76 @@ struct pci_memory_controller {
 void print_timings_info(float cas, int rcd, int rp, int ras) {
 
 	/* Now, we could print some additionnals timings infos) */
-	cprint(LINE_CPU+5, col2 +1, "/ CAS : ");
+	cprint(LINE_CPU+6, col2 +1, "/ CAS : ");
 	col2 += 9;
 
 	// CAS Latency (tCAS)
 	if (cas == 1.5) {
-		cprint(LINE_CPU+5, col2, "1.5"); col2 += 3;
+		cprint(LINE_CPU+6, col2, "1.5"); col2 += 3;
 	} else if (cas == 2.5) {
-		cprint(LINE_CPU+5, col2, "2.5"); col2 += 3;
+		cprint(LINE_CPU+6, col2, "2.5"); col2 += 3;
+	} else if (cas < 10) {
+		dprint(LINE_CPU+6, col2, cas, 1, 0); col2 += 1;
 	} else {
-		dprint(LINE_CPU+5, col2, cas, 1, 0); col2 += 1;
+		dprint(LINE_CPU+6, col2, cas, 2, 0); col2 += 2;		
 	}
-	cprint(LINE_CPU+5, col2, "-"); col2 += 1;
+	cprint(LINE_CPU+6, col2, "-"); col2 += 1;
 
 	// RAS-To-CAS (tRCD)
-	dprint(LINE_CPU+5, col2, rcd, 1, 0);
-	cprint(LINE_CPU+5, col2+1, "-");
-	col2 +=2;
+	if (rcd < 10) {
+		dprint(LINE_CPU+6, col2, rcd, 1, 0);
+		col2 += 1;
+	} else {
+		dprint(LINE_CPU+6, col2, rcd, 2, 0);
+		col2 += 2;		
+	}
+	cprint(LINE_CPU+6, col2, "-"); col2 += 1;
 
 	// RAS Precharge (tRP)
-	dprint(LINE_CPU+5, col2, rp, 1, 0);
-	cprint(LINE_CPU+5, col2+1, "-");
-	col2 +=2;
+	if (rp < 10) {
+		dprint(LINE_CPU+6, col2, rp, 1, 0);
+		col2 += 1;
+	} else {
+		dprint(LINE_CPU+6, col2, rp, 2, 0);
+		col2 += 2;		
+	}
+	cprint(LINE_CPU+6, col2, "-"); col2 += 1;
 
 	// RAS Active to precharge (tRAS)
-	if (ras < 9) {
-		dprint(LINE_CPU+5, col2, ras, 1, 0);
+	if (ras < 10) {
+		dprint(LINE_CPU+6, col2, ras, 1, 0);
 		col2 += 2;
 	} else {
-		dprint(LINE_CPU+5, col2, ras, 2, 0);
+		dprint(LINE_CPU+6, col2, ras, 2, 0);
 		col2 += 3;
 	}
 
 }
 
-void print_fsb_info(float val, const char *text_fsb) {
+void print_fsb_info(float val, const char *text_fsb, const char *text_ddr) {
 
-	cprint(LINE_CPU+5, col2, "Settings: ");
+	int i;
+
+	cprint(LINE_CPU+6, col2, "Settings: ");
 	col2 += 10;
-	cprint(LINE_CPU+5, col2, text_fsb);
+	cprint(LINE_CPU+6, col2, text_fsb);
 	col2 += 6;
-	dprint(LINE_CPU+5, col2, val ,3 ,0);
+	dprint(LINE_CPU+6, col2, val ,3 ,0);
 	col2 += 3;
-	cprint(LINE_CPU+5, col2 +1, "MHz ");
-	col2 += 5;
-	cprint(LINE_CPU+5, col2, "(DDR");
-	col2 += 4;
+	cprint(LINE_CPU+6, col2 +1, "MHz (");
+	col2 += 6;
+	
+	cprint(LINE_CPU+6, col2, text_ddr);
+	for(i = 0; text_ddr[i] != '\0'; i++) { col2++; }
+	
 	if(val < 500) {
-	dprint(LINE_CPU+5, col2, val*2 ,3 ,0);
+	dprint(LINE_CPU+6, col2, val*2 ,3 ,0);
 	col2 += 3; 
 	} else {
-	dprint(LINE_CPU+5, col2, val*2 ,4 ,0);
+	dprint(LINE_CPU+6, col2, val*2 ,4 ,0);
 	col2 += 4; 		
 	}
-	cprint(LINE_CPU+5, col2, ")");
+	cprint(LINE_CPU+6, col2, ")");
 	col2 += 1;
 }
 
@@ -164,6 +181,42 @@ static void poll_nothing(void)
  * controller about memory errors.
  */
 	return;
+}
+
+static void setup_nhm(void)
+{
+	static float possible_nhm_bus[] = {0xFF, 0x7F, 0x3F};
+	unsigned long did, vid, mc_control, mc_ssrcontrol;
+	int i;
+	
+	//Nehalem supports Scrubbing */
+	ctrl.cap = ECC_SCRUB;
+	ctrl.mode = ECC_NONE;
+
+	/* First, locate the PCI bus where the MCH is located */
+
+	for(i = 0; i < sizeof(possible_nhm_bus); i++) {
+		pci_conf_read( possible_nhm_bus[i], 3, 4, 0x00, 2, &vid);
+		pci_conf_read( possible_nhm_bus[i], 3, 4, 0x02, 2, &did);
+		vid &= 0xFFFF;
+		did &= 0xFFFF;
+		if(vid == 0x8086 && did == 0x2C1C) { 
+			nhm_bus = possible_nhm_bus[i]; 
+			}
+}
+
+	/* Now, we have the last IMC bus number in nhm_bus */
+	/* Check for ECC & Scrub */
+	
+	pci_conf_read(nhm_bus, 3, 0, 0x4C, 2, &mc_control);	
+	if((mc_control >> 4) & 1) { 
+		ctrl.mode = ECC_CORRECT; 
+		pci_conf_read(nhm_bus, 3, 2, 0x48, 2, &mc_ssrcontrol);	
+		if(mc_ssrcontrol & 3) { 
+			ctrl.mode = ECC_SCRUB; 
+		}		
+	}
+	
 }
 
 static void setup_amd64(void)
@@ -746,7 +799,7 @@ static void setup_p35(void)
 	if (!(dev0 & 0x1)) {
 		pci_conf_write( 0, 0, 0, 0x48, 1, dev0 | 1);
 	}
-	
+
 	// ECC Checking (No poll on X38/48 for now)
 	pci_conf_read( 0, 0, 0, 0xE4, 4, &capid0);
 	if ((capid0 >> 8) & 1) {
@@ -754,8 +807,9 @@ static void setup_p35(void)
 	} else {
 		ctrl.cap = ECC_CORRECT;	
 	}
-	
+
 	ctrl.mode = ECC_NONE; 
+	
 }
 
 static void poll_i875(void)
@@ -1050,6 +1104,8 @@ static void poll_iE7520(void)
 }
 
 
+
+
 /* ------------------ Here the code for FSB detection ------------------ */
 /* --------------------------------------------------------------------- */
 
@@ -1087,6 +1143,24 @@ static float getP4PMmultiplier(void)
 			coef = (msr_lo >> 24) & 0x1F;
 		}
 	}
+	return coef;
+}
+
+static float getNHMmultiplier(void)
+{
+	unsigned int msr_lo, msr_hi;
+	float coef;
+	
+	/* Find multiplier (by MSR) */
+	/* First, check if Flexible Ratio is Enabled */
+	rdmsr(0x194, msr_lo, msr_hi);
+	if((msr_lo >> 16) & 1){
+		coef = (msr_lo >> 8) & 0xFF;
+	 } else {
+		rdmsr(0xCE, msr_lo, msr_hi);
+		coef = (msr_lo >> 8) & 0xFF;
+	 }
+
 	return coef;
 }
 
@@ -1172,7 +1246,7 @@ static void poll_fsb_amd64(void) {
 	dramclock = (extclock /1000) / clockratio;
 
 	/* ...and print */
-	print_fsb_info(dramclock, "RAM : ");
+	print_fsb_info(dramclock, "RAM : ", "DDR");
 
 }
 
@@ -1180,57 +1254,64 @@ static void poll_fsb_k10(void) {
 
 	unsigned int mcgsrl;
 	unsigned int mcgsth;
-	unsigned long fid, temp2;
+	unsigned long temp2;
 	unsigned long dramchr;
-	float clockratio;
+	unsigned long mainPllId;
 	double dramclock;
-	float coef;
 
-	/* First, got the FID by MSR */
-	rdmsr(0xc0010071, mcgsrl, mcgsth);
-	fid = mcgsrl & 0x3F;
-
-	/* Extreme simplification. */
-	coef = (fid + 16.0f) / 2.0f;
-
-	/* Next, we need the clock ratio */
+		/* First, we need the clock ratio */
 		pci_conf_read(0, 24, 2, 0x94, 4, &dramchr);
 		temp2 = (dramchr & 0x7);
 
 		switch (temp2) {
-			default:
-			case 0x0:
-				clockratio = coef;
-				break;
-			case 0x1:
-				clockratio = coef * 3.0f/4.0f;
-				break;
-			case 0x2:
-				clockratio = coef * 3.0f/5.0f;
-				break;
-			case 0x3:
-				clockratio = coef * 3.0f/6.0f;
-				break;
-			case 0x4:
-				clockratio = coef * 3.0f/7.0f;
-				break;
-			case 0x5:
-				clockratio = coef * 3.0f/8.0f;
-				break;
-			case 0x6:
-				clockratio = coef * 3.0f/9.0f;
-				break;
-			case 0x7:
-				clockratio = coef * 3.0f/10.0f;
-				break;
-			}	
+			case 0x7: temp2++;
+			case 0x6: temp2++;
+			case 0x5: temp2++;
+			case 0x4: temp2++;
+			default:  temp2 += 3;
+		}	
 
 
 	/* Compute the final DRAM Clock */
-	dramclock = (extclock /1000) / clockratio;
+	if (((cpu_id.ext >> 20) & 0xFF) == 1)
+		dramclock = ((temp2 * 200) / 3.0) + 0.25;
+	else {
+		unsigned long target;
+		unsigned long dx;
+		unsigned      divisor;
+
+
+		target = temp2 * 400;
+
+		/* Get the FID by MSR */
+		rdmsr(0xc0010071, mcgsrl, mcgsth);
+
+		pci_conf_read(0, 24, 3, 0xD4, 4, &mainPllId);
+
+		if ( mainPllId & 0x40 )
+			mainPllId &= 0x3F;
+		else
+			mainPllId = 8;	/* FID for 1600 */
+
+		mcgsth = (mcgsth >> 17) & 0x3F;
+		if ( mcgsth ) {
+			if ( mainPllId > mcgsth )
+				mainPllId = mcgsth;
+		}
+
+		dx = (mainPllId + 8) * 1200;
+		for ( divisor = 3; divisor < 100; divisor++ )
+			if ( (dx / divisor) <= target )
+				break;
+
+		dramclock = ((dx / divisor) / 6.0) + 0.25;
+/*
+ * 		dramclock = ((((dx * extclock) / divisor) / (mainPllId+8)) / 600000.0) + 0.25;
+ */
+}
 
 	/* ...and print */
-	print_fsb_info(dramclock, "RAM : ");
+	print_fsb_info(dramclock, "RAM : ", "DDR");
 
 }
 
@@ -1283,14 +1364,14 @@ static void poll_fsb_i925(void) {
 	dramclock = fsb * dramratio;
 
 	// Print DRAM Freq 
-	print_fsb_info(dramclock, "RAM : "); 
+	print_fsb_info(dramclock, "RAM : ", "DDR"); 
 	
 	/* Print FSB (only if ECC is not enabled) */
-	cprint(LINE_CPU+4, col +1, "- FSB : ");
+	cprint(LINE_CPU+5, col +1, "- FSB : ");
 	col += 9;
-	dprint(LINE_CPU+4, col, fsb, 3,0);
+	dprint(LINE_CPU+5, col, fsb, 3,0);
 	col += 3;
-	cprint(LINE_CPU+4, col +1, "MHz");
+	cprint(LINE_CPU+5, col +1, "MHz");
 	col += 4;
 	
 }
@@ -1321,14 +1402,14 @@ static void poll_fsb_i945(void) {
 	dramclock = fsb * dramratio;
 
 	// Print DRAM Freq
-	print_fsb_info(dramclock, "RAM : ");
+	print_fsb_info(dramclock, "RAM : ", "DDR");
 
 	/* Print FSB (only if ECC is not enabled) */
-	cprint(LINE_CPU+4, col +1, "- FSB : ");
+	cprint(LINE_CPU+5, col +1, "- FSB : ");
 	col += 9;
-	dprint(LINE_CPU+4, col, fsb, 3,0);
+	dprint(LINE_CPU+5, col, fsb, 3,0);
 	col += 3;
-	cprint(LINE_CPU+4, col +1, "MHz");
+	cprint(LINE_CPU+5, col +1, "MHz");
 	col += 4;
 
 }
@@ -1390,14 +1471,14 @@ static void poll_fsb_i975(void) {
 	dramclock = fsb * dramratio;
 
 	// Print DRAM Freq
-	print_fsb_info(dramclock, "RAM : ");
+	print_fsb_info(dramclock, "RAM : ", "DDR");
 
 	/* Print FSB (only if ECC is not enabled) */
-	cprint(LINE_CPU+4, col +1, "- FSB : ");
+	cprint(LINE_CPU+5, col +1, "- FSB : ");
 	col += 9;
-	dprint(LINE_CPU+4, col, fsb, 3,0);
+	dprint(LINE_CPU+5, col, fsb, 3,0);
 	col += 3;
-	cprint(LINE_CPU+4, col +1, "MHz");
+	cprint(LINE_CPU+5, col +1, "MHz");
 	col += 4;
 
 }
@@ -1482,14 +1563,14 @@ static void poll_fsb_i965(void) {
 	dramclock = fsb * dramratio;
 
 	// Print DRAM Freq
-	print_fsb_info(dramclock, "RAM : ");
+	print_fsb_info(dramclock, "RAM : ", "DDR");
 
 	/* Print FSB (only if ECC is not enabled) */
-	cprint(LINE_CPU+4, col +1, "- FSB : ");
+	cprint(LINE_CPU+5, col +1, "- FSB : ");
 	col += 9;
-	dprint(LINE_CPU+4, col, fsb, 3,0);
+	dprint(LINE_CPU+5, col, fsb, 3,0);
 	col += 3;
-	cprint(LINE_CPU+4, col +1, "MHz");
+	cprint(LINE_CPU+5, col +1, "MHz");
 	col += 4;
 
 }
@@ -1552,14 +1633,14 @@ static void poll_fsb_im965(void) {
 	dramclock = fsb * dramratio;
 
 	// Print DRAM Freq
-	print_fsb_info(dramclock, "RAM : ");
+	print_fsb_info(dramclock, "RAM : ", "DDR");
 
 	/* Print FSB (only if ECC is not enabled) */
-	cprint(LINE_CPU+4, col +1, "- FSB : ");
+	cprint(LINE_CPU+5, col +1, "- FSB : ");
 	col += 9;
-	dprint(LINE_CPU+4, col, fsb, 3,0);
+	dprint(LINE_CPU+5, col, fsb, 3,0);
 	col += 3;
-	cprint(LINE_CPU+4, col +1, "MHz");
+	cprint(LINE_CPU+5, col +1, "MHz");
 	col += 4;
 
 }
@@ -1601,14 +1682,14 @@ static void poll_fsb_5400(void) {
 	dramclock = fsb * dramratio;
 
 	// Print DRAM Freq
-	print_fsb_info(dramclock, "RAM : ");
+	print_fsb_info(dramclock, "RAM : ", "DDR");
 
 	/* Print FSB (only if ECC is not enabled) */
-	cprint(LINE_CPU+4, col +1, "- FSB : ");
+	cprint(LINE_CPU+5, col +1, "- FSB : ");
 	col += 9;
-	dprint(LINE_CPU+4, col, fsb, 3,0);
+	dprint(LINE_CPU+5, col, fsb, 3,0);
 	col += 3;
-	cprint(LINE_CPU+4, col +1, "MHz");
+	cprint(LINE_CPU+5, col +1, "MHz");
 	col += 4;
 
 }
@@ -1643,14 +1724,14 @@ static void poll_fsb_nf4ie(void) {
 	dramclock = fsb * dramratio;
 
 	/* Print DRAM Freq */
-	print_fsb_info(dramclock, "RAM : ");
+	print_fsb_info(dramclock, "RAM : ", "DDR");
 
 	/* Print FSB  */
-	cprint(LINE_CPU+4, col, "- FSB : ");
+	cprint(LINE_CPU+5, col, "- FSB : ");
 	col += 9;
-	dprint(LINE_CPU+4, col, fsb, 3,0);
+	dprint(LINE_CPU+5, col, fsb, 3,0);
 	col += 3;
-	cprint(LINE_CPU+4, col +1, "MHz");
+	cprint(LINE_CPU+5, col +1, "MHz");
 	col += 4;
 	
 }
@@ -1685,15 +1766,15 @@ static void poll_fsb_i875(void) {
 	fsb = ((extclock /1000) / coef);
 
 	/* Print DRAM Freq */
-	print_fsb_info(dramclock, "RAM : ");
+	print_fsb_info(dramclock, "RAM : ", "DDR");
 
 	/* Print FSB (only if ECC is not enabled) */
 	if ( ctrl.mode == ECC_NONE ) {
-		cprint(LINE_CPU+4, col +1, "- FSB : ");
+		cprint(LINE_CPU+5, col +1, "- FSB : ");
 		col += 9;
-		dprint(LINE_CPU+4, col, fsb, 3,0);
+		dprint(LINE_CPU+5, col, fsb, 3,0);
 		col += 3;
-		cprint(LINE_CPU+4, col +1, "MHz");
+		cprint(LINE_CPU+5, col +1, "MHz");
 		col += 4;
 	}
 }
@@ -1706,17 +1787,17 @@ static void poll_fsb_p4(void) {
 	fsb = ((extclock /1000) / coef);
 
 	/* Print FSB */
-	cprint(LINE_CPU+4, col +1, "/ FSB : ");
+	cprint(LINE_CPU+5, col +1, "/ FSB : ");
 	col += 9;
-	dprint(LINE_CPU+4, col, fsb, 3,0);
+	dprint(LINE_CPU+5, col, fsb, 3,0);
 	col += 3;
-	cprint(LINE_CPU+4, col +1, "MHz");
+	cprint(LINE_CPU+5, col +1, "MHz");
 	col += 4;
 
 	/* For synchro only chipsets */
 	pci_conf_read( 0, 0, 0, 0x02, 2, &idetect);
 	if (idetect == 0x2540 || idetect == 0x254C) {
-		print_fsb_info(fsb, "RAM : ");
+		print_fsb_info(fsb, "RAM : ", "DDR");
 	}
 }
 
@@ -1739,27 +1820,27 @@ static void poll_fsb_i855(void) {
 
 		/* Is it an i855GM or PM ? */
 		if (idetect == 0x3580) {
-			cprint(LINE_CPU+4, col-1, "i855GM/GME ");
+			cprint(LINE_CPU+5, col-1, "i855GM/GME ");
 			col += 10;
 		}
 	} else {
 		rdmsr(0x2C, msr_lo, msr_hi);
 		coef = (msr_lo >> 24) & 0x1F;
-		cprint(LINE_CPU+4, col-1, "i852PM/GM ");
+		cprint(LINE_CPU+5, col-1, "i852PM/GM ");
 		col += 9;
 	}
 
 	fsb = ((extclock /1000) / coef);
 
 	/* Print FSB */
-	cprint(LINE_CPU+4, col, "/ FSB : ");	col += 8;
-	dprint(LINE_CPU+4, col, fsb, 3,0);	col += 3;
-	cprint(LINE_CPU+4, col +1, "MHz");	col += 4;
+	cprint(LINE_CPU+5, col, "/ FSB : ");	col += 8;
+	dprint(LINE_CPU+5, col, fsb, 3,0);	col += 3;
+	cprint(LINE_CPU+5, col +1, "MHz");	col += 4;
 
 	/* Is it a Centrino platform or only an i855 platform ? */
 	pci_conf_read( 2, 2, 0, 0x02, 2, &centri);
-	if (centri == 0x1043) {	cprint(LINE_CPU+4, col +1, "/ Centrino Mobile Platform"); }
-	else { cprint(LINE_CPU+4, col +1, "/ Mobile Platform"); }
+	if (centri == 0x1043) {	cprint(LINE_CPU+5, col +1, "/ Centrino Mobile Platform"); }
+	else { cprint(LINE_CPU+5, col +1, "/ Mobile Platform"); }
 
 	/* Compute DRAM Clock */
 
@@ -1784,7 +1865,7 @@ static void poll_fsb_i855(void) {
 	dramclock = fsb * dramratio;
 
 	/* ...and print */
-	print_fsb_info(dramclock, "RAM : ");
+	print_fsb_info(dramclock, "RAM : ", "DDR");
 
 }
 
@@ -1809,7 +1890,7 @@ static void poll_fsb_amd32(void) {
 	dramclock = (extclock /1000) / coef2;
 
 	/* ...and print */
-	print_fsb_info(dramclock, "FSB : ");
+	print_fsb_info(dramclock, "FSB : ", "DDR");
 
 }
 
@@ -1848,13 +1929,127 @@ static void poll_fsb_nf2(void) {
 
 	/* ...and print */
 
-	cprint(LINE_CPU+4, col, "/ FSB : ");
+	cprint(LINE_CPU+5, col, "/ FSB : ");
 	col += 8;
+	dprint(LINE_CPU+5, col, fsb, 3,0);
+	col += 3;
+	cprint(LINE_CPU+5, col +1, "MHz");
+
+	print_fsb_info(dramclock, "RAM : ", "DDR");
+
+}
+
+static void poll_fsb_us15w(void) {
+
+	double dramclock, dramratio, fsb, gfx;
+	unsigned long msr;
+
+	/* Find dramratio */
+	/* D0 MsgRd, 05 Zunit, 03 MSR */
+	pci_conf_write(0, 0, 0, 0xD0, 4, 0xD0050300 );		
+	pci_conf_read(0, 0, 0, 0xD4, 4, &msr );		
+	fsb = ( msr >> 3 ) & 1;
+
+	dramratio = 0.5; 
+
+	// Compute RAM Frequency
+	if (( msr >> 3 ) & 1) {
+		fsb = 533;
+	} else {
+		fsb = 400;
+	}
+
+	switch (( msr >> 0 ) & 7) {
+		case 0:
+			gfx = 100;
+			break;
+		case 1:
+			gfx = 133;
+			break;
+		case 2:
+			gfx = 150;
+			break;
+		case 3:
+			gfx = 178;
+			break;
+		case 4:
+			gfx = 200;
+			break;
+		case 5:
+			gfx = 266;
+			break;
+		default:
+			gfx = 0;
+			break;
+	}	
+	
+	dramclock = fsb * dramratio;
+
+	// Print DRAM Freq
+	print_fsb_info(dramclock, "RAM : ", "DDR");
+
+	/* Print FSB (only if ECC is not enabled) */
+	cprint(LINE_CPU+4, col +1, "- FSB : ");
+	col += 9;
 	dprint(LINE_CPU+4, col, fsb, 3,0);
 	col += 3;
 	cprint(LINE_CPU+4, col +1, "MHz");
+	col += 4;
 
-	print_fsb_info(dramclock, "RAM : ");
+	cprint(LINE_CPU+4, col +1, "- GFX : ");
+	col += 9;
+	dprint(LINE_CPU+4, col, gfx, 3,0);
+	col += 3;
+	cprint(LINE_CPU+4, col +1, "MHz");
+	col += 4;
+
+}
+
+static void poll_fsb_nhm(void) {
+
+	double dramclock, dramratio, fsb;
+	unsigned long mc_dimm_clk_ratio, qpi_pll_status;
+	float coef = getNHMmultiplier();
+	float qpi_speed;
+
+	fsb = ((extclock /1000) / coef);
+
+	/* Print FSB */
+	cprint(LINE_CPU+5, col +1, "/ FSB : ");
+	col += 9;
+	dprint(LINE_CPU+5, col, fsb, 3,0);
+	col += 3;
+	cprint(LINE_CPU+5, col +1, "MHz");
+	col += 4;
+	
+	/* Print QPI Speed (if ECC not supported) */
+	if(ctrl.mode == ECC_NONE) {
+		pci_conf_read(nhm_bus, 2, 1, 0x50, 2, &qpi_pll_status);
+		qpi_speed = (qpi_pll_status & 0x7F) * ((extclock / 1000) / coef) * 2;
+		cprint(LINE_CPU+5, col +1, "/ QPI : ");
+		col += 9;
+		dprint(LINE_CPU+5, col, qpi_speed/1000, 1,0);
+		col += 1;
+		cprint(LINE_CPU+5, col, ".");
+		col += 1;		
+		qpi_speed = ((qpi_speed / 1000) - (int)(qpi_speed / 1000)) * 10;
+		dprint(LINE_CPU+5, col, qpi_speed, 1,0);
+		col += 1;		
+		cprint(LINE_CPU+5, col +1, "GT/s");
+		col += 5;	
+	}
+	
+	/* Get the clock ratio */
+	
+	pci_conf_read(nhm_bus, 3, 4, 0x54, 2, &mc_dimm_clk_ratio);
+	dramratio = (mc_dimm_clk_ratio & 0x1F);
+	
+	// Compute RAM Frequency
+	fsb = ((extclock / 1000) / coef);
+	dramclock = fsb * dramratio / 2;
+
+	// Print DRAM Freq
+	print_fsb_info(dramclock, "RAM : ", "DDR3-");
 
 }
 
@@ -1867,7 +2062,7 @@ static void poll_timings_nf4ie(void) {
 	ulong regd0, reg8c, reg9c, reg80;
 	int cas, rcd, rp, ras;
 
-	cprint(LINE_CPU+4, col +1, "- Type : DDR-II");
+	cprint(LINE_CPU+5, col +1, "- Type : DDR-II");
 
 	//Now, read Registers
 	pci_conf_read( 0, 1, 1, 0xD0, 4, &regd0);
@@ -1884,9 +2079,9 @@ static void poll_timings_nf4ie(void) {
 	print_timings_info(cas, rcd, rp, ras);
 	
 	if (reg80 & 0x3) {
-		cprint(LINE_CPU+5, col2, "/ Dual Channel (128 bits)");
+		cprint(LINE_CPU+6, col2, "/ Dual Channel (128 bits)");
 	} else {
-		cprint(LINE_CPU+5, col2, "/ Single Channel (64 bits)");
+		cprint(LINE_CPU+6, col2, "/ Single Channel (64 bits)");
 	}
 
 }
@@ -1907,9 +2102,9 @@ static void poll_timings_i875(void) {
 	ptr2=(long*)(dev6+0x68);
 
 	if ((dev62&0x3) == 0 && ((*ptr2 >> 14)&1) == 1) {
-		cprint(LINE_CPU+4, col +1, "- PAT : Enabled");
+		cprint(LINE_CPU+5, col +1, "- PAT : Enabled");
 	} else {
-		cprint(LINE_CPU+4, col +1, "- PAT : Disabled");
+		cprint(LINE_CPU+5, col +1, "- PAT : Disabled");
 	}
 
 	/* Now, we could check some additionnals timings infos) */
@@ -1936,9 +2131,9 @@ static void poll_timings_i875(void) {
 
 	// Print 64 or 128 bits mode
 	if (((*ptr2 >> 21)&3) > 0) { 
-		cprint(LINE_CPU+5, col2, "/ Dual Channel (128 bits)");
+		cprint(LINE_CPU+6, col2, "/ Dual Channel (128 bits)");
 	} else {
-		cprint(LINE_CPU+5, col2, "/ Single Channel (64 bits)");
+		cprint(LINE_CPU+6, col2, "/ Single Channel (64 bits)");
 	}
 }
 
@@ -1967,13 +2162,13 @@ static void poll_timings_i925(void) {
 
 	//Determine DDR or DDR-II
 	if ((drc & 3) == 2) {
-		cprint(LINE_CPU+4, col +1, "- Type : DDR-II");
+		cprint(LINE_CPU+5, col +1, "- Type : DDR-II");
 	} else {
-		cprint(LINE_CPU+4, col +1, "- Type : DDR-I");
+		cprint(LINE_CPU+5, col +1, "- Type : DDR-I");
 	}
 
 	// Now, detect timings
-	cprint(LINE_CPU+5, col2 +1, "/ CAS : ");
+	cprint(LINE_CPU+6, col2 +1, "/ CAS : ");
 	col2 += 9;
 
 	// CAS Latency (tCAS)
@@ -1981,26 +2176,26 @@ static void poll_timings_i925(void) {
 
 	if ((drc & 3) == 2){
 		// Timings DDR-II
-		if      (temp == 0x0) { cprint(LINE_CPU+5, col2, "5-"); }
-		else if (temp == 0x1) { cprint(LINE_CPU+5, col2, "4-"); }
-		else if (temp == 0x2) { cprint(LINE_CPU+5, col2, "3-"); }
-		else		      { cprint(LINE_CPU+5, col2, "6-"); }
+		if      (temp == 0x0) { cprint(LINE_CPU+6, col2, "5-"); }
+		else if (temp == 0x1) { cprint(LINE_CPU+6, col2, "4-"); }
+		else if (temp == 0x2) { cprint(LINE_CPU+6, col2, "3-"); }
+		else		      { cprint(LINE_CPU+6, col2, "6-"); }
 	} else {
 		// Timings DDR-I
-		if      (temp == 0x0) { cprint(LINE_CPU+5, col2, "3-"); }
-		else if (temp == 0x1) { cprint(LINE_CPU+5, col2, "2.5-"); col2 +=2;}
-		else		      { cprint(LINE_CPU+5, col2, "2-"); }
+		if      (temp == 0x0) { cprint(LINE_CPU+6, col2, "3-"); }
+		else if (temp == 0x1) { cprint(LINE_CPU+6, col2, "2.5-"); col2 +=2;}
+		else		      { cprint(LINE_CPU+6, col2, "2-"); }
 	}
 	col2 +=2;
 
 	// RAS-To-CAS (tRCD)
-	dprint(LINE_CPU+5, col2, ((drt >> 4)& 0x3)+2, 1 ,0);
-	cprint(LINE_CPU+5, col2+1, "-");
+	dprint(LINE_CPU+6, col2, ((drt >> 4)& 0x3)+2, 1 ,0);
+	cprint(LINE_CPU+6, col2+1, "-");
 	col2 +=2;
 
 	// RAS Precharge (tRP)
-	dprint(LINE_CPU+5, col2, (drt&0x3)+2, 1 ,0);
-	cprint(LINE_CPU+5, col2+1, "-");
+	dprint(LINE_CPU+6, col2, (drt&0x3)+2, 1 ,0);
+	cprint(LINE_CPU+6, col2+1, "-");
 	col2 +=2;
 
 	// RAS Active to precharge (tRAS)
@@ -2010,15 +2205,15 @@ static void poll_timings_i925(void) {
 	else
 		temp = ((drt >> 20)& 0x0F);
 
-	dprint(LINE_CPU+5, col2, temp , 1 ,0);
+	dprint(LINE_CPU+6, col2, temp , 1 ,0);
 	(temp < 10)?(col2 += 1):(col2 += 2);
 
-	cprint(LINE_CPU+5, col2+1, "/"); col2 +=2;
+	cprint(LINE_CPU+6, col2+1, "/"); col2 +=2;
 
 	temp = (dcc&0x3);
-	if      (temp == 1) { cprint(LINE_CPU+5, col2, " Dual Channel (Asymmetric)"); }
-	else if (temp == 2) { cprint(LINE_CPU+5, col2, " Dual Channel (Interleaved)"); }
-	else		    { cprint(LINE_CPU+5, col2, " Single Channel (64 bits)"); }
+	if      (temp == 1) { cprint(LINE_CPU+6, col2, " Dual Channel (Asymmetric)"); }
+	else if (temp == 2) { cprint(LINE_CPU+6, col2, " Dual Channel (Interleaved)"); }
+	else		    { cprint(LINE_CPU+6, col2, " Single Channel (64 bits)"); }
 
 }
 
@@ -2058,41 +2253,41 @@ static void poll_timings_i965(void) {
 	Misc_Register = *ptr & 0xFFFFFFFF;
 
 	//Intel 965 Series only support DDR2
-	cprint(LINE_CPU+4, col +1, "- Type : DDR-II");
+	cprint(LINE_CPU+5, col +1, "- Type : DDR-II");
 
 	// Now, detect timings
-	cprint(LINE_CPU+5, col2 +1, "/ CAS : ");
+	cprint(LINE_CPU+6, col2 +1, "/ CAS : ");
 	col2 += 9;
 
 	// CAS Latency (tCAS)
 	temp = ((ODT_Control_Register >> 17)& 7) + 3.0f;
-	dprint(LINE_CPU+5, col2, temp, 1 ,0);
-	cprint(LINE_CPU+5, col2+1, "-");
+	dprint(LINE_CPU+6, col2, temp, 1 ,0);
+	cprint(LINE_CPU+6, col2+1, "-");
 	(temp < 10)?(col2 += 2):(col2 += 3);
 
 	// RAS-To-CAS (tRCD)
 	temp = (Read_Register >> 16) & 0xF;
-	dprint(LINE_CPU+5, col2, temp, 1 ,0);
-	cprint(LINE_CPU+5, col2+1, "-");
+	dprint(LINE_CPU+6, col2, temp, 1 ,0);
+	cprint(LINE_CPU+6, col2+1, "-");
 	(temp < 10)?(col2 += 2):(col2 += 3);
 
 	// RAS Precharge (tRP)
 	temp = (ACT_Register >> 13) & 0xF;
-	dprint(LINE_CPU+5, col2, temp, 1 ,0);
-	cprint(LINE_CPU+5, col2+1, "-");
+	dprint(LINE_CPU+6, col2, temp, 1 ,0);
+	cprint(LINE_CPU+6, col2+1, "-");
 	(temp < 10)?(col2 += 2):(col2 += 3);
 
 	// RAS Active to precharge (tRAS)
 	temp = (Precharge_Register >> 11) & 0x1F;
-	dprint(LINE_CPU+5, col2, temp, 1 ,0);
+	dprint(LINE_CPU+6, col2, temp, 1 ,0);
 	(temp < 10)?(col2 += 1):(col2 += 2);
 
-	cprint(LINE_CPU+5, col2+1, "/"); col2 +=2;
+	cprint(LINE_CPU+6, col2+1, "/"); col2 +=2;
 
 	if ((c0ckectrl >> 20 & 0xF) && (c1ckectrl >> 20 & 0xF)) { 
-		cprint(LINE_CPU+5, col2+1, "Dual Channel"); 
+		cprint(LINE_CPU+6, col2+1, "Dual Channel"); 
 	}	else {
-		cprint(LINE_CPU+5, col2+1, "Single Channel"); 
+		cprint(LINE_CPU+6, col2+1, "Single Channel"); 
 	}
 
 }
@@ -2124,41 +2319,41 @@ static void poll_timings_im965(void) {
 	Precharge_Register = *ptr & 0xFFFFFFFF;
 
 	//Intel 965 Series only support DDR2
-	cprint(LINE_CPU+4, col+1, "- Type : DDR-II");
+	cprint(LINE_CPU+5, col+1, "- Type : DDR-II");
 
 	// Now, detect timings
-	cprint(LINE_CPU+5, col2 +1, "/ CAS : ");
+	cprint(LINE_CPU+6, col2 +1, "/ CAS : ");
 	col2 += 9;
 
 	// CAS Latency (tCAS)
 	temp = ((ODT_Control_Register >> 23)& 7) + 3.0f;
-	dprint(LINE_CPU+5, col2, temp, 1 ,0);
-	cprint(LINE_CPU+5, col2+1, "-");
+	dprint(LINE_CPU+6, col2, temp, 1 ,0);
+	cprint(LINE_CPU+6, col2+1, "-");
 	(temp < 10)?(col2 += 2):(col2 += 3);
 
 	// RAS-To-CAS (tRCD)
 	temp = ((Precharge_Register >> 5)& 7) + 2.0f;
-	dprint(LINE_CPU+5, col2, temp, 1 ,0);
-	cprint(LINE_CPU+5, col2+1, "-");
+	dprint(LINE_CPU+6, col2, temp, 1 ,0);
+	cprint(LINE_CPU+6, col2+1, "-");
 	(temp < 10)?(col2 += 2):(col2 += 3);
 
 	// RAS Precharge (tRP)
 	temp = (Precharge_Register & 7) + 2.0f;
-	dprint(LINE_CPU+5, col2, temp, 1 ,0);
-	cprint(LINE_CPU+5, col2+1, "-");
+	dprint(LINE_CPU+6, col2, temp, 1 ,0);
+	cprint(LINE_CPU+6, col2+1, "-");
 	(temp < 10)?(col2 += 2):(col2 += 3);
 
 	// RAS Active to precharge (tRAS)
 	temp = (Precharge_Register >> 21) & 0x1F;
-	dprint(LINE_CPU+5, col2, temp, 1 ,0);
+	dprint(LINE_CPU+6, col2, temp, 1 ,0);
 	(temp < 10)?(col2 += 1):(col2 += 2);
 
-	cprint(LINE_CPU+5, col2+1, "/"); col2 +=2;
+	cprint(LINE_CPU+6, col2+1, "/"); col2 +=2;
 
 	if ((c0ckectrl >> 20 & 0xF) && (c1ckectrl >> 20 & 0xF)) { 
-		cprint(LINE_CPU+5, col2+1, "Dual Channel"); 
+		cprint(LINE_CPU+6, col2+1, "Dual Channel"); 
 	}	else {
-		cprint(LINE_CPU+5, col2+1, "Single Channel"); 
+		cprint(LINE_CPU+6, col2+1, "Single Channel"); 
 	}
 
 }
@@ -2204,45 +2399,46 @@ static void poll_timings_p35(void) {
 	//Determine DDR or DDR-II
 	
 	if (Memory_Check & 1) {
-		cprint(LINE_CPU+4, col +1, "- Type : DDR2");
+		cprint(LINE_CPU+5, col +1, "- Type : DDR2");
 	} else {
-		cprint(LINE_CPU+4, col +1, "- Type : DDR3");
+		cprint(LINE_CPU+5, col +1, "- Type : DDR3");
 	}
 
 	// Now, detect timings
-	cprint(LINE_CPU+5, col2 +1, "/ CAS : ");
+	cprint(LINE_CPU+6, col2 +1, "/ CAS : ");
 	col2 += 9;
 
 	// CAS Latency (tCAS)
 	temp = ((ODT_Control_Register >> 8)& 0x3F) - 9.0f;
-	dprint(LINE_CPU+5, col2, temp, 1 ,0);
-	cprint(LINE_CPU+5, col2+1, "-");
+	if (!(Memory_Check & 1)) { temp += 3.0f; }
+	dprint(LINE_CPU+6, col2, temp, 1 ,0);
+	cprint(LINE_CPU+6, col2+1, "-");
 	(temp < 10)?(col2 += 2):(col2 += 3);
 
 	// RAS-To-CAS (tRCD)
 	temp = (Read_Register >> 17) & 0xF;
-	dprint(LINE_CPU+5, col2, temp, 1 ,0);
-	cprint(LINE_CPU+5, col2+1, "-");
+	dprint(LINE_CPU+6, col2, temp, 1 ,0);
+	cprint(LINE_CPU+6, col2+1, "-");
 	(temp < 10)?(col2 += 2):(col2 += 3);
 
 	// RAS Precharge (tRP)
 	temp = (ACT_Register >> 13) & 0xF;
-	dprint(LINE_CPU+5, col2, temp, 1 ,0);
-	cprint(LINE_CPU+5, col2+1, "-");
+	dprint(LINE_CPU+6, col2, temp, 1 ,0);
+	cprint(LINE_CPU+6, col2+1, "-");
 	(temp < 10)?(col2 += 2):(col2 += 3);
 
 	// RAS Active to precharge (tRAS)
 	temp = Precharge_Register & 0x3F;
-	dprint(LINE_CPU+5, col2, temp, 1 ,0);
+	dprint(LINE_CPU+6, col2, temp, 1 ,0);
 	(temp < 10)?(col2 += 1):(col2 += 2);
 
-	cprint(LINE_CPU+5, col2+1, "/"); col2 +=2;
+	cprint(LINE_CPU+6, col2+1, "/"); col2 +=2;
 
 
 	if ((c0ckectrl >> 20 & 0xF) && (c1ckectrl >> 20 & 0xF)) { 
-		cprint(LINE_CPU+5, col2+1, "Dual Channel"); 
+		cprint(LINE_CPU+6, col2+1, "Dual Channel"); 
 	}	else {
-		cprint(LINE_CPU+5, col2+1, "Single Channel"); 
+		cprint(LINE_CPU+6, col2+1, "Single Channel"); 
 	}
 
 }
@@ -2271,43 +2467,43 @@ static void poll_timings_5400(void) {
 	pci_conf_read( 0, 16, 1, 0x58, 4, &mca);
 
 	//This chipset only supports FB-DIMM (Removed => too long)
-	//cprint(LINE_CPU+4, col +1, "- Type : FBD");
+	//cprint(LINE_CPU+5, col +1, "- Type : FBD");
 
 	// Now, detect timings
-	cprint(LINE_CPU+5, col2 +1, "/ CAS : ");
+	cprint(LINE_CPU+6, col2 +1, "/ CAS : ");
 	col2 += 9;
 
 	// CAS Latency (tCAS)
 	temp = mtr2 & 0xF;
-	dprint(LINE_CPU+5, col2, temp, 1 ,0);
-	cprint(LINE_CPU+5, col2+1, "-");
+	dprint(LINE_CPU+6, col2, temp, 1 ,0);
+	cprint(LINE_CPU+6, col2+1, "-");
 	col2 += 2;
 
 	// RAS-To-CAS (tRCD)
 	temp = 6 - ((mtr1 >> 10) & 3);
-	dprint(LINE_CPU+5, col2, temp, 1 ,0);
-	cprint(LINE_CPU+5, col2+1, "-");
+	dprint(LINE_CPU+6, col2, temp, 1 ,0);
+	cprint(LINE_CPU+6, col2+1, "-");
 	col2 += 2;
 
 	// RAS Precharge (tRP)
 	temp = 6 - ((mtr1 >> 8) & 3);
-	dprint(LINE_CPU+5, col2, temp, 1 ,0);
-	cprint(LINE_CPU+5, col2+1, "-");
+	dprint(LINE_CPU+6, col2, temp, 1 ,0);
+	cprint(LINE_CPU+6, col2+1, "-");
 	col2 += 2;
 
 	// RAS Active to precharge (tRAS)
 	temp = 16 - (3 * ((mtr1 >> 29) & 3)) + ((mtr1 >> 12) & 3);
   if(((mtr1 >> 12) & 3) == 3 && ((mtr1 >> 29) & 3) == 2) { temp = 9; }
 
-	dprint(LINE_CPU+5, col2, temp, 1 ,0);
+	dprint(LINE_CPU+6, col2, temp, 1 ,0);
 	(temp < 10)?(col2 += 1):(col2 += 2);
 
-	cprint(LINE_CPU+5, col2+1, "/"); col2 +=2;
+	cprint(LINE_CPU+6, col2+1, "/"); col2 +=2;
 
 	if ((mca >> 14) & 1) { 
-		cprint(LINE_CPU+5, col2+1, "Single Channel"); 
+		cprint(LINE_CPU+6, col2+1, "Single Channel"); 
 	}	else {
-		cprint(LINE_CPU+5, col2+1, "Dual Channel"); 
+		cprint(LINE_CPU+6, col2+1, "Dual Channel"); 
 	}
 
 }
@@ -2329,9 +2525,9 @@ static void poll_timings_E7520(void) {
 	print_timings_info(cas, rcd, rp, ras);
 	
 	if ((ddrcsr & 0xF) >= 0xC) {
-		cprint(LINE_CPU+5, col2, "/ Dual Channel (128 bits)");
+		cprint(LINE_CPU+6, col2, "/ Dual Channel (128 bits)");
 	} else {
-		cprint(LINE_CPU+5, col2, "/ Single Channel (64 bits)");
+		cprint(LINE_CPU+6, col2, "/ Single Channel (64 bits)");
 	}
 }
 
@@ -2343,31 +2539,31 @@ static void poll_timings_i855(void) {
 	pci_conf_read( 0, 0, 0, 0x78, 4, &drt);
 
 	/* Now, we could print some additionnals timings infos) */
-	cprint(LINE_CPU+5, col2 +1, "/ CAS : ");
+	cprint(LINE_CPU+6, col2 +1, "/ CAS : ");
 	col2 += 9;
 
 	// CAS Latency (tCAS)
 	temp = ((drt >> 4)&0x1);
-	if (temp == 0x0) { cprint(LINE_CPU+5, col2, "2.5-"); col2 += 4;  }
-	else { cprint(LINE_CPU+5, col2, "2-"); col2 +=2; }
+	if (temp == 0x0) { cprint(LINE_CPU+6, col2, "2.5-"); col2 += 4;  }
+	else { cprint(LINE_CPU+6, col2, "2-"); col2 +=2; }
 
 	// RAS-To-CAS (tRCD)
 	temp = ((drt >> 2)& 0x1);
-	if (temp == 0x0) { cprint(LINE_CPU+5, col2, "3-"); }
-	else { cprint(LINE_CPU+5, col2, "2-"); }
+	if (temp == 0x0) { cprint(LINE_CPU+6, col2, "3-"); }
+	else { cprint(LINE_CPU+6, col2, "2-"); }
 	col2 +=2;
 
 	// RAS Precharge (tRP)
 	temp = (drt&0x1);
-	if (temp == 0x0) { cprint(LINE_CPU+5, col2, "3-"); }
-	else { cprint(LINE_CPU+5, col2, "2-"); }
+	if (temp == 0x0) { cprint(LINE_CPU+6, col2, "3-"); }
+	else { cprint(LINE_CPU+6, col2, "2-"); }
 	col2 +=2;
 
 	// RAS Active to precharge (tRAS)
 	temp = 7-((drt >> 9)& 0x3);
-	if (temp == 0x0) { cprint(LINE_CPU+5, col2, "7"); }
-	if (temp == 0x1) { cprint(LINE_CPU+5, col2, "6"); }
-	if (temp == 0x2) { cprint(LINE_CPU+5, col2, "5"); }
+	if (temp == 0x0) { cprint(LINE_CPU+6, col2, "7"); }
+	if (temp == 0x1) { cprint(LINE_CPU+6, col2, "6"); }
+	if (temp == 0x2) { cprint(LINE_CPU+6, col2, "5"); }
 	col2 +=1;
 
 }
@@ -2391,9 +2587,9 @@ static void poll_timings_E750x(void) {
 	print_timings_info(cas, rcd, rp, ras);
 
 	if (((drc >> 22)&1) == 1) {
-		cprint(LINE_CPU+5, col2, "/ Dual Channel (128 bits)");
+		cprint(LINE_CPU+6, col2, "/ Dual Channel (128 bits)");
 	} else {
-		cprint(LINE_CPU+5, col2, "/ Single Channel (64 bits)");
+		cprint(LINE_CPU+6, col2, "/ Single Channel (64 bits)");
 	}
 
 }
@@ -2405,34 +2601,34 @@ static void poll_timings_i852(void) {
 	pci_conf_read( 0, 0, 1, 0x60, 4, &drt);
 
 	/* Now, we could print some additionnals timings infos) */
-	cprint(LINE_CPU+5, col2 +1, "/ CAS : ");
+	cprint(LINE_CPU+6, col2 +1, "/ CAS : ");
 	col2 += 9;
 
 	// CAS Latency (tCAS)
 	temp = ((drt >> 5)&0x1);
-	if (temp == 0x0) { cprint(LINE_CPU+5, col2, "2.5-"); col2 += 4;  }
-	else { cprint(LINE_CPU+5, col2, "2-"); col2 +=2; }
+	if (temp == 0x0) { cprint(LINE_CPU+6, col2, "2.5-"); col2 += 4;  }
+	else { cprint(LINE_CPU+6, col2, "2-"); col2 +=2; }
 
 	// RAS-To-CAS (tRCD)
 	temp = ((drt >> 2)& 0x3);
-	if (temp == 0x0) { cprint(LINE_CPU+5, col2, "4-"); }
-	if (temp == 0x1) { cprint(LINE_CPU+5, col2, "3-"); }
-	else { cprint(LINE_CPU+5, col2, "2-"); }
+	if (temp == 0x0) { cprint(LINE_CPU+6, col2, "4-"); }
+	if (temp == 0x1) { cprint(LINE_CPU+6, col2, "3-"); }
+	else { cprint(LINE_CPU+6, col2, "2-"); }
 	col2 +=2;
 
 	// RAS Precharge (tRP)
 	temp = (drt&0x3);
-	if (temp == 0x0) { cprint(LINE_CPU+5, col2, "4-"); }
-	if (temp == 0x1) { cprint(LINE_CPU+5, col2, "3-"); }
-	else { cprint(LINE_CPU+5, col2, "2-"); }
+	if (temp == 0x0) { cprint(LINE_CPU+6, col2, "4-"); }
+	if (temp == 0x1) { cprint(LINE_CPU+6, col2, "3-"); }
+	else { cprint(LINE_CPU+6, col2, "2-"); }
 	col2 +=2;
 
 	// RAS Active to precharge (tRAS)
 	temp = ((drt >> 9)& 0x3);
-	if (temp == 0x0) { cprint(LINE_CPU+5, col2, "8"); col2 +=7; }
-	if (temp == 0x1) { cprint(LINE_CPU+5, col2, "7"); col2 +=6; }
-	if (temp == 0x2) { cprint(LINE_CPU+5, col2, "6"); col2 +=5; }
-	if (temp == 0x3) { cprint(LINE_CPU+5, col2, "5"); col2 +=5; }
+	if (temp == 0x0) { cprint(LINE_CPU+6, col2, "8"); col2 +=7; }
+	if (temp == 0x1) { cprint(LINE_CPU+6, col2, "7"); col2 +=6; }
+	if (temp == 0x2) { cprint(LINE_CPU+6, col2, "6"); col2 +=5; }
+	if (temp == 0x3) { cprint(LINE_CPU+6, col2, "5"); col2 +=5; }
 	col2 +=1;
 
 }
@@ -2443,7 +2639,7 @@ static void poll_timings_amd64(void) {
 	int temp;
 	int trcd, trp, tras ;
 
-	cprint(LINE_CPU+5, col2 +1, "/ CAS : ");
+	cprint(LINE_CPU+6, col2 +1, "/ CAS : ");
 	col2 += 9;
 	
 	pci_conf_read(0, 24, 2, 0x88, 4, &dramtlr);
@@ -2454,35 +2650,35 @@ static void poll_timings_amd64(void) {
 
 			// CAS Latency (tCAS)
 			temp = (dramtlr & 0x7) + 1;
-			dprint(LINE_CPU+5, col2, temp , 1 ,0);
-			cprint(LINE_CPU+5, col2 +1, "-"); col2 +=2;
+			dprint(LINE_CPU+6, col2, temp , 1 ,0);
+			cprint(LINE_CPU+6, col2 +1, "-"); col2 +=2;
 		
 			// RAS-To-CAS (tRCD)
 			trcd = ((dramtlr >> 4) & 0x3) + 3;
-			dprint(LINE_CPU+5, col2, trcd , 1 ,0);
-			cprint(LINE_CPU+5, col2 +1, "-"); col2 +=2;
+			dprint(LINE_CPU+6, col2, trcd , 1 ,0);
+			cprint(LINE_CPU+6, col2 +1, "-"); col2 +=2;
 		
 			// RAS Precharge (tRP)
 			trp = ((dramtlr >> 8) & 0x3) + 3;
-			dprint(LINE_CPU+5, col2, trp , 1 ,0);
-			cprint(LINE_CPU+5, col2 +1, "-"); col2 +=2;
+			dprint(LINE_CPU+6, col2, trp , 1 ,0);
+			cprint(LINE_CPU+6, col2 +1, "-"); col2 +=2;
 		
 			// RAS Active to precharge (tRAS)
 			tras = ((dramtlr >> 12) & 0xF) + 3;
 			if (tras < 10){
-			dprint(LINE_CPU+5, col2, tras , 1 ,0); col2 += 1;
+			dprint(LINE_CPU+6, col2, tras , 1 ,0); col2 += 1;
 			} else {
-			dprint(LINE_CPU+5, col2, tras , 2 ,0); col2 += 2;
+			dprint(LINE_CPU+6, col2, tras , 2 ,0); col2 += 2;
 			}
-			cprint(LINE_CPU+5, col2+1, "/"); col2 +=2;
+			cprint(LINE_CPU+6, col2+1, "/"); col2 +=2;
 		
 			// Print 64 or 128 bits mode
 		
 			if ((dramclr >> 11)&1) {
-				cprint(LINE_CPU+5, col2, " DDR-2 (128 bits)");
+				cprint(LINE_CPU+6, col2, " DDR-2 (128 bits)");
 				col2 +=17;
 			} else {
-				cprint(LINE_CPU+5, col2, " DDR-2 (64 bits)");
+				cprint(LINE_CPU+6, col2, " DDR-2 (64 bits)");
 				col2 +=16;
 			}
 
@@ -2491,36 +2687,36 @@ static void poll_timings_amd64(void) {
 
 			// CAS Latency (tCAS)
 			temp = (dramtlr & 0x7);
-			if (temp == 0x1) { cprint(LINE_CPU+5, col2, "2-"); col2 +=2; }
-			if (temp == 0x2) { cprint(LINE_CPU+5, col2, "3-"); col2 +=2; }
-			if (temp == 0x5) { cprint(LINE_CPU+5, col2, "2.5-"); col2 +=4; }
+			if (temp == 0x1) { cprint(LINE_CPU+6, col2, "2-"); col2 +=2; }
+			if (temp == 0x2) { cprint(LINE_CPU+6, col2, "3-"); col2 +=2; }
+			if (temp == 0x5) { cprint(LINE_CPU+6, col2, "2.5-"); col2 +=4; }
 		
 			// RAS-To-CAS (tRCD)
 			trcd = ((dramtlr >> 12) & 0x7);
-			dprint(LINE_CPU+5, col2, trcd , 1 ,0);
-			cprint(LINE_CPU+5, col2 +1, "-"); col2 +=2;
+			dprint(LINE_CPU+6, col2, trcd , 1 ,0);
+			cprint(LINE_CPU+6, col2 +1, "-"); col2 +=2;
 		
 			// RAS Precharge (tRP)
 			trp = ((dramtlr >> 24) & 0x7);
-			dprint(LINE_CPU+5, col2, trp , 1 ,0);
-			cprint(LINE_CPU+5, col2 +1, "-"); col2 +=2;
+			dprint(LINE_CPU+6, col2, trp , 1 ,0);
+			cprint(LINE_CPU+6, col2 +1, "-"); col2 +=2;
 		
 			// RAS Active to precharge (tRAS)
 			tras = ((dramtlr >> 20) & 0xF);
 			if (tras < 10){
-			dprint(LINE_CPU+5, col2, tras , 1 ,0); col2 += 1;
+			dprint(LINE_CPU+6, col2, tras , 1 ,0); col2 += 1;
 			} else {
-			dprint(LINE_CPU+5, col2, tras , 2 ,0); col2 += 2;
+			dprint(LINE_CPU+6, col2, tras , 2 ,0); col2 += 2;
 			}
-			cprint(LINE_CPU+5, col2+1, "/"); col2 +=2;
+			cprint(LINE_CPU+6, col2+1, "/"); col2 +=2;
 		
 			// Print 64 or 128 bits mode
 		
 			if (((dramclr >> 16)&1) == 1) {
-				cprint(LINE_CPU+5, col2, " DDR-1 (128 bits)");
+				cprint(LINE_CPU+6, col2, " DDR-1 (128 bits)");
 				col2 +=17;
 			} else {
-				cprint(LINE_CPU+5, col2, " DDR-1 (64 bits)");
+				cprint(LINE_CPU+6, col2, " DDR-1 (64 bits)");
 				col2 +=16;
 			}
 	}
@@ -2532,7 +2728,7 @@ static void poll_timings_k10(void) {
 	int temp;
 	int trcd, trp, tras ;
 
-	cprint(LINE_CPU+5, col2 +1, "/ CAS : ");
+	cprint(LINE_CPU+6, col2 +1, "/ CAS : ");
 	col2 += 9;
 	
 	pci_conf_read(0, 24, 2, 0x88, 4, &dramtlr);
@@ -2541,48 +2737,65 @@ static void poll_timings_k10(void) {
 
 	// CAS Latency (tCAS)
 	temp = (dramtlr & 0x7) + 1;
-	dprint(LINE_CPU+5, col2, temp , 1 ,0);
-	cprint(LINE_CPU+5, col2 +1, "-"); col2 +=2;
+	dprint(LINE_CPU+6, col2, temp , 1 ,0);
+	cprint(LINE_CPU+6, col2 +1, "-"); col2 +=2;
 	
 	// RAS-To-CAS (tRCD)
 	trcd = ((dramtlr >> 4) & 0x3) + 3;
-	dprint(LINE_CPU+5, col2, trcd , 1 ,0);
-	cprint(LINE_CPU+5, col2 +1, "-"); col2 +=2;
+	dprint(LINE_CPU+6, col2, trcd , 1 ,0);
+	cprint(LINE_CPU+6, col2 +1, "-"); col2 +=2;
 	
 	// RAS Precharge (tRP)
 	trp = ((dramtlr >> 8) & 0x3) + 3;
-	dprint(LINE_CPU+5, col2, trp , 1 ,0);
-	cprint(LINE_CPU+5, col2 +1, "-"); col2 +=2;
+	dprint(LINE_CPU+6, col2, trp , 1 ,0);
+	cprint(LINE_CPU+6, col2 +1, "-"); col2 +=2;
 
 	// RAS Active to precharge (tRAS)
 	tras = ((dramtlr >> 12) & 0xF) + 3;
-	dprint(LINE_CPU+5, col2, tras, 1 ,0);
+	dprint(LINE_CPU+6, col2, tras, 1 ,0);
 	(tras < 10)?(col2 += 1):(col2 += 2);
-	cprint(LINE_CPU+5, col2, "-");
+	cprint(LINE_CPU+6, col2, "-");
 	col2 += 1;
 
 	// Row Cycle Time (tRC)
 	trp = ((dramtlr >> 16) & 0x1F) + 11;
-	dprint(LINE_CPU+5, col2, trp , 1 ,0);
+	dprint(LINE_CPU+6, col2, trp , 1 ,0);
 	col2 +=2;	
 	
-	cprint(LINE_CPU+5, col2+1, "/"); col2 +=2;
+	cprint(LINE_CPU+6, col2+1, "/"); col2 +=2;
 	
 	//Print DDR2 or DDR3
 	if ((dramchr >> 8)&1) {
-		cprint(LINE_CPU+5, col2+1, "DDR-3");
+		cprint(LINE_CPU+6, col2+1, "DDR-3");
 	} else {
-		cprint(LINE_CPU+5, col2+1, "DDR-2");
+		cprint(LINE_CPU+6, col2+1, "DDR-2");
 	}
 	col2 += 6;
 	
 	// Print 64 or 128 bits mode
 	if ((dramclr >> 4)&1) {
-		cprint(LINE_CPU+5, col2+1, "(Dual)");
+		cprint(LINE_CPU+6, col2+1, "(Dual)");
 	} else {
-		cprint(LINE_CPU+5, col2+1, "(Single)");
+		cprint(LINE_CPU+6, col2+1, "(Single)");
 	}
 	
+}
+
+static void poll_timings_EP80579(void) {
+
+	ulong drt1, drt2;
+	float cas;
+	int rcd, rp, ras;
+
+	pci_conf_read( 0, 0, 0, 0x78, 4, &drt1);
+	pci_conf_read( 0, 0, 0, 0x64, 4, &drt2);
+
+	cas = ((drt1 >> 3) & 0x7) + 3;
+	rcd = ((drt1 >> 9) & 0x7) + 3;
+	rp = ((drt1 >> 6) & 0x7) + 3;
+	ras = ((drt2 >> 28) & 0xF) + 8;
+
+	print_timings_info(cas, rcd, rp, ras);
 }
 
 static void poll_timings_nf2(void) {
@@ -2597,47 +2810,124 @@ static void poll_timings_nf2(void) {
 	pci_conf_read(0, 0, 2, 0x44, 4, &dimm2p);
 	pci_conf_read(0, 0, 2, 0x48, 4, &dimm3p);
 
-	cprint(LINE_CPU+5, col2 +1, "/ CAS : ");
+	cprint(LINE_CPU+6, col2 +1, "/ CAS : ");
 	col2 += 9;
 
 	// CAS Latency (tCAS)
 	temp = ((dramtlr2 >> 4) & 0x7);
-	if (temp == 0x2) { cprint(LINE_CPU+5, col2, "2-"); col2 +=2; }
-	if (temp == 0x3) { cprint(LINE_CPU+5, col2, "3-"); col2 +=2; }
-	if (temp == 0x6) { cprint(LINE_CPU+5, col2, "2.5-"); col2 +=4; }
+	if (temp == 0x2) { cprint(LINE_CPU+6, col2, "2-"); col2 +=2; }
+	if (temp == 0x3) { cprint(LINE_CPU+6, col2, "3-"); col2 +=2; }
+	if (temp == 0x6) { cprint(LINE_CPU+6, col2, "2.5-"); col2 +=4; }
 
 	// RAS-To-CAS (tRCD)
 	temp = ((dramtlr >> 20) & 0xF);
-	dprint(LINE_CPU+5, col2, temp , 1 ,0);
-	cprint(LINE_CPU+5, col2 +1, "-"); col2 +=2;
+	dprint(LINE_CPU+6, col2, temp , 1 ,0);
+	cprint(LINE_CPU+6, col2 +1, "-"); col2 +=2;
 
 	// RAS Precharge (tRP)
 	temp = ((dramtlr >> 28) & 0xF);
-	dprint(LINE_CPU+5, col2, temp , 1 ,0);
-	cprint(LINE_CPU+5, col2 +1, "-"); col2 +=2;
+	dprint(LINE_CPU+6, col2, temp , 1 ,0);
+	cprint(LINE_CPU+6, col2 +1, "-"); col2 +=2;
 
 	// RAS Active to precharge (tRAS)
 	temp = ((dramtlr >> 15) & 0xF);
 	if (temp < 10){
-		dprint(LINE_CPU+5, col2, temp , 1 ,0); col2 += 1;
+		dprint(LINE_CPU+6, col2, temp , 1 ,0); col2 += 1;
 	} else {
-		dprint(LINE_CPU+5, col2, temp , 2 ,0); col2 += 2;
+		dprint(LINE_CPU+6, col2, temp , 2 ,0); col2 += 2;
 	}
-		cprint(LINE_CPU+5, col2+1, "/"); col2 +=2;
+		cprint(LINE_CPU+6, col2+1, "/"); col2 +=2;
 
 	// Print 64 or 128 bits mode
 	// If DIMM1 & DIMM3 or DIMM1 & DIMM2 populated, than Dual Channel.
 
 	if ((dimm3p&1) + (dimm2p&1) == 2 || (dimm3p&1) + (dimm1p&1) == 2 ) {
-		cprint(LINE_CPU+5, col2, " Dual Channel (128 bits)");
+		cprint(LINE_CPU+6, col2, " Dual Channel (128 bits)");
 		col2 +=24;
 	} else {
-		cprint(LINE_CPU+5, col2, " Single Channel (64 bits)");
+		cprint(LINE_CPU+6, col2, " Single Channel (64 bits)");
 		col2 +=15;
 	}
 
 }
 
+static void poll_timings_us15w(void) {
+
+	// Thanks for CDH optis
+	ulong dtr, temp;
+
+	/* Find dramratio */
+	/* D0 MsgRd, 01 Dunit, 01 DTR */
+	pci_conf_write(0, 0, 0, 0xD0, 4, 0xD0010100 );		
+	pci_conf_read(0, 0, 0, 0xD4, 4, &dtr );		
+
+	// Now, detect timings
+	cprint(LINE_CPU+5, col2 +1, "/ CAS : ");
+	col2 += 9;
+
+	// CAS Latency (tCAS)
+	temp = ((dtr >> 4) & 0x3) + 3;
+	dprint(LINE_CPU+5, col2, temp, 1 ,0);
+	cprint(LINE_CPU+5, col2+1, "-");
+	col2 += 2;
+
+	// RAS-To-CAS (tRCD)
+	temp = ((dtr >> 2) & 0x3) + 3;
+	dprint(LINE_CPU+5, col2, temp, 1 ,0);
+	cprint(LINE_CPU+5, col2+1, "-");
+	col2 += 2;
+
+	// RAS Precharge (tRP)
+	temp = ((dtr >> 0) & 0x3) + 3;
+	dprint(LINE_CPU+5, col2, temp, 1 ,0);
+	col2 += 1;
+
+}
+
+static void poll_timings_nhm(void) {
+
+	ulong mc_channel_bank_timing, mc_control, mc_channel_mrs_value;
+	float cas; 
+	int rcd, rp, ras;
+	int fvc_bn = 4;
+
+	/* Find which channels are populated */
+	pci_conf_read(nhm_bus, 3, 0, 0x48, 2, &mc_control);		
+	mc_control = (mc_control >> 8) & 0x7;
+	
+	/* Get the first valid channel */
+	if(mc_control & 1) { 
+		fvc_bn = 4; 
+	} else if(mc_control & 2) { 
+		fvc_bn = 5; 
+	}	else if(mc_control & 7) { 
+		fvc_bn = 6; 
+	}
+
+	// Now, detect timings
+	// CAS Latency (tCAS) / RAS-To-CAS (tRCD) / RAS Precharge (tRP) / RAS Active to precharge (tRAS)
+	pci_conf_read(nhm_bus, fvc_bn, 0, 0x88, 4, &mc_channel_bank_timing);	
+	pci_conf_read(nhm_bus, fvc_bn, 0, 0x70, 4, &mc_channel_mrs_value);	
+	cas = ((mc_channel_mrs_value >> 4) & 0xF ) + 4.0f;
+	rcd = (mc_channel_bank_timing >> 9) & 0xF; 
+	ras = (mc_channel_bank_timing >> 4) & 0x1F; 
+	rp = mc_channel_bank_timing & 0xF;
+
+	print_timings_info(cas, rcd, rp, ras);
+
+	// Print 1, 2 or 3 Channels
+	if (mc_control == 1 || mc_control == 2 || mc_control == 4 ) {
+		cprint(LINE_CPU+6, col2, "/ Single Channel");
+		col2 += 16;
+	} else if (mc_control == 7) {
+		cprint(LINE_CPU+6, col2, "/ Triple Channel");
+		col2 += 16;
+	} else {
+		cprint(LINE_CPU+6, col2, "/ Dual Channel");
+		col2 += 14;		
+	}
+
+}
 
 
 /* ------------------ Let's continue ------------------ */
@@ -2677,8 +2967,8 @@ static struct pci_memory_controller controllers[] = {
 	{ 0x1039, 0x0672, "SiS 672",   0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },	
 
 	/* ALi */
-	{ 0x10b9, 0x1531, "Aladdin 4", 0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x10b9, 0x1541, "Aladdin 5", 0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x10b9, 0x1531, "ALi Aladdin 4", 0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x10b9, 0x1541, "ALi Aladdin 5", 0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
 	{ 0x10b9, 0x1644, "ALi Aladdin M1644", 0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
 
 	/* ATi */
@@ -2686,8 +2976,8 @@ static struct pci_memory_controller controllers[] = {
 	{ 0x1002, 0x5831, "ATi Radeon 9100 IGP", 0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },
 	{ 0x1002, 0x5832, "ATi Radeon 9100 IGP", 0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },
 	{ 0x1002, 0x5833, "ATi Radeon 9100 IGP", 0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x1002, 0x5954, "ATi Radeon xPress 200", 0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x1002, 0x5A41, "ATi Radeon xPress 200", 0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x1002, 0x5954, "ATi Radeon Xpress 200", 0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x1002, 0x5A41, "ATi Radeon Xpress 200", 0, poll_fsb_p4, poll_timings_nothing, setup_nothing, poll_nothing },
 
 	/* nVidia */
 	{ 0x10de, 0x01A4, "nVidia nForce", 0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
@@ -2696,14 +2986,14 @@ static struct pci_memory_controller controllers[] = {
 
 	/* VIA */
 	{ 0x1106, 0x0305, "VIA KT133/KT133A",    0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x1106, 0x0391, "vt8371",    0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x1106, 0x0501, "vt8501",    0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x1106, 0x0585, "vt82c585",  0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x1106, 0x0595, "vt82c595",  0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x1106, 0x0597, "vt82c597",  0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x1106, 0x0598, "VT82C598",  0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x1106, 0x0691, "VT82C691/693A/694X",  0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x1106, 0x0693, "VT82C693",  0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x1106, 0x0391, "VIA KX133",    0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x1106, 0x0501, "VIA MVP4",    0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x1106, 0x0585, "VIA VP/VPX",  0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x1106, 0x0595, "VIA VP2",  0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x1106, 0x0597, "VIA VP3",  0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x1106, 0x0598, "VIA MVP3",  0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x1106, 0x0691, "VIA Apollo Pro/133/133A",  0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x1106, 0x0693, "VIA Apollo Pro+",  0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
 	{ 0x1106, 0x0601, "VIA PLE133",  0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
 	{ 0x1106, 0x3099, "VIA KT266(A)/KT333", 0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
 	{ 0x1106, 0x3189, "VIA KT400(A)/600", 0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
@@ -2721,27 +3011,27 @@ static struct pci_memory_controller controllers[] = {
 
 	/* Intel */
 	{ 0x8086, 0x1130, "Intel i815",      		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x122d, "Intel i430fx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x1235, "Intel i430mx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x1237, "Intel i440fx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x1250, "Intel i430hx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x122d, "Intel i430FX",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x1235, "Intel i430MX",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x1237, "Intel i440FX",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x1250, "Intel i430HX",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
 	{ 0x8086, 0x1A21, "Intel i840",      		0, poll_fsb_nothing, poll_timings_nothing, setup_i840, poll_i840 },
 	{ 0x8086, 0x1A30, "Intel i845",      		0, poll_fsb_p4, poll_timings_nothing, setup_i845, poll_i845 },
 	{ 0x8086, 0x2560, "Intel i845E/G/PE/GE",0, poll_fsb_p4, poll_timings_nothing, setup_i845, poll_i845 },
 	{ 0x8086, 0x2500, "Intel i820",      		0, poll_fsb_nothing, poll_timings_nothing, setup_i820, poll_i820 },
 	{ 0x8086, 0x2530, "Intel i850",      		0, poll_fsb_p4, poll_timings_nothing, setup_i850, poll_i850 },
 	{ 0x8086, 0x2531, "Intel i860",      		1, poll_fsb_nothing, poll_timings_nothing, setup_i860, poll_i860 },
-	{ 0x8086, 0x7030, "Intel i430vx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x7100, "Intel i430tx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x7030, "Intel i430VX",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x7100, "Intel i430TX",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
 	{ 0x8086, 0x7120, "Intel i810",      		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
 	{ 0x8086, 0x7122, "Intel i810",      		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x7124, "Intel i810e",     		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x7180, "Intel i440[le]x", 		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x7124, "Intel i810E",     		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x7180, "Intel i440[LE]X", 		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
 	{ 0x8086, 0x7190, "Intel i440BX",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
 	{ 0x8086, 0x7192, "Intel i440BX",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
-	{ 0x8086, 0x71A0, "Intel i440gx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_i440gx, poll_i440gx },
-	{ 0x8086, 0x71A2, "Intel i440gx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_i440gx, poll_i440gx },
-	{ 0x8086, 0x84C5, "Intel i450gx",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
+	{ 0x8086, 0x71A0, "Intel i440GX",    		0, poll_fsb_nothing, poll_timings_nothing, setup_i440gx, poll_i440gx },
+	{ 0x8086, 0x71A2, "Intel i440GX",    		0, poll_fsb_nothing, poll_timings_nothing, setup_i440gx, poll_i440gx },
+	{ 0x8086, 0x84C5, "Intel i450GX",    		0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
 	{ 0x8086, 0x2540, "Intel E7500",     		1, poll_fsb_p4, poll_timings_E750x, setup_iE7xxx, poll_iE7xxx },
 	{ 0x8086, 0x254C, "Intel E7501",     		1, poll_fsb_p4, poll_timings_E750x, setup_iE7xxx, poll_iE7xxx },
 	{ 0x8086, 0x255d, "Intel E7205",     		0, poll_fsb_p4, poll_timings_nothing, setup_iE7xxx, poll_iE7xxx },
@@ -2771,11 +3061,19 @@ static struct pci_memory_controller controllers[] = {
 	{ 0x8086, 0x29C0, "Intel P35/G33", 	 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
 	{ 0x8086, 0x29D0, "Intel Q33",	  	 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
 	{ 0x8086, 0x29E0, "Intel X38/X48", 	 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},			
+	{ 0x8086, 0x2E10, "Intel Q45/Q43", 	 		0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
+	{ 0x8086, 0x2E20, "Intel P45/G43",	  	0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
+	{ 0x8086, 0x2E30, "Intel G41", 	 				0, poll_fsb_i965, poll_timings_p35, setup_p35, poll_nothing},	
 	{ 0x8086, 0x4001, "Intel 5400A", 		 		0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing},		
 	{ 0x8086, 0x4003, "Intel 5400B", 		 		0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing},		
 	{ 0x8086, 0x25D8, "Intel 5000P", 		 		0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing},		
 	{ 0x8086, 0x25D4, "Intel 5000V", 		 		0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing},	
-	{ 0x8086, 0x25C0, "Intel 5000Z", 		 		0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing}		
+	{ 0x8086, 0x25C0, "Intel 5000X", 		 		0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing},		
+	{ 0x8086, 0x25D0, "Intel 5000Z", 		 		0, poll_fsb_5400, poll_timings_5400, setup_E5400, poll_nothing},	
+	{ 0x8086, 0x5020, "Intel EP80579",    	0, poll_fsb_p4, 	poll_timings_EP80579, setup_nothing, poll_nothing },
+	{ 0x8086, 0x8100, "Intel US15W",				0, poll_fsb_us15w, poll_timings_us15w, setup_nothing, poll_nothing},
+	{ 0x8086, 0x8101, "Intel UL11L/US15L", 	0, poll_fsb_us15w, poll_timings_us15w, setup_nothing, poll_nothing},
+	{ 0x8086, 0x3405, "NHM IMC", 	 					0, poll_fsb_nhm, 	poll_timings_nhm, setup_nhm, poll_nothing}
 };	
 
 static void print_memory_controller(void)
@@ -2792,32 +3090,32 @@ static void print_memory_controller(void)
 	/* Print the controller name */
 	name = controllers[ctrl.index].name;
 	col = 10;
-	cprint(LINE_CPU+4, col, name);
+	cprint(LINE_CPU+5, col, name);
 	/* Now figure out how much I just printed */
 	while(name[col - 10] != '\0') {
 		col++;
 	}
 	/* Now print the memory controller capabilities */
-	cprint(LINE_CPU+4, col, " "); col++;
+	cprint(LINE_CPU+5, col, " "); col++;
 	if (ctrl.cap == ECC_UNKNOWN) {
 		return;
 	}
 	if (ctrl.cap & __ECC_DETECT) {
 		int on;
 		on = ctrl.mode & __ECC_DETECT;
-		cprint(LINE_CPU+4, col, "(ECC : ");
-		cprint(LINE_CPU+4, col +7, on?"Detect":"Disabled)");
+		cprint(LINE_CPU+5, col, "(ECC : ");
+		cprint(LINE_CPU+5, col +7, on?"Detect":"Disabled)");
 		on?(col += 13):(col += 16);
 	}
 	if (ctrl.mode & __ECC_CORRECT) {
 		int on;
 		on = ctrl.mode & __ECC_CORRECT;
-		cprint(LINE_CPU+4, col, " / ");
+		cprint(LINE_CPU+5, col, " / ");
 		if (ctrl.cap & __ECC_CHIPKILL) {
-		cprint(LINE_CPU+4, col +3, on?"Correct -":"");
+		cprint(LINE_CPU+5, col +3, on?"Correct -":"");
 		on?(col += 12):(col +=3);
 		} else {
-			cprint(LINE_CPU+4, col +3, on?"Correct)":"");
+			cprint(LINE_CPU+5, col +3, on?"Correct)":"");
 			on?(col += 11):(col +=3);
 		}
 	}
@@ -2825,22 +3123,22 @@ static void print_memory_controller(void)
 	if (ctrl.cap & __ECC_CHIPKILL) {
 		int on;
 		on = ctrl.mode & __ECC_CHIPKILL;
-		cprint(LINE_CPU+4, col, " Chipkill : ");
-		cprint(LINE_CPU+4, col +12, on?"On)":"Off)");
+		cprint(LINE_CPU+5, col, " Chipkill : ");
+		cprint(LINE_CPU+5, col +12, on?"On)":"Off)");
 		on?(col += 15):(col +=16);
 	}}
 	if (ctrl.mode & __ECC_SCRUB) {
 		int on;
 		on = ctrl.mode & __ECC_SCRUB;
-		cprint(LINE_CPU+4, col, " Scrub");
-		cprint(LINE_CPU+4, col +6, on?"+ ":"- ");
+		cprint(LINE_CPU+5, col, " Scrub");
+		cprint(LINE_CPU+5, col +6, on?"+ ":"- ");
 		col += 7;
 	}
 	if (ctrl.cap & __ECC_UNEXPECTED) {
 		int on;
 		on = ctrl.mode & __ECC_UNEXPECTED;
-		cprint(LINE_CPU+4, col, "Unknown");
-		cprint(LINE_CPU+4, col +7, on?"+ ":"- ");
+		cprint(LINE_CPU+5, col, "Unknown");
+		cprint(LINE_CPU+5, col +7, on?"+ ":"- ");
 		col += 9;
 	}
 

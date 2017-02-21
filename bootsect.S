@@ -26,10 +26,6 @@ _boot:
 # ld86 requires an entry symbol. This may as well be the usual one.
 .globl	_main
 _main:
-  movb  $0x01, %ah      # turn off the cursor
-  movb  $0x00, %bh
-  movw  $0x2000, %cx
-  int   $0x10 
 	movw	$BOOTSEG, %ax
 	movw	%ax, %ds
 	movw	$INITSEG, %ax
@@ -169,6 +165,7 @@ got_sectors:
 	movw	%ax, %es		# segment of 0x010000
 	call	read_it
 	call	kill_motor
+	call  turnoffcursor
 	call	print_nl
 
 # after that (everyting loaded), we jump to
@@ -358,6 +355,13 @@ kill_motor:
 	popw	%dx
 	ret
 
+turnoffcursor:
+  movb  $0x01, %ah      # turn off the cursor
+  movb  $0x00, %bh
+  movw  $0x2000, %cx
+  int   $0x10 
+	ret
+	
 sectors:
 	.word 0
 

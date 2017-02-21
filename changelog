@@ -1,20 +1,22 @@
-Memtest86+ V2.01 changelog
+Memtest86+ V2.10 changelog
 --------------------------
 
-	- Solved a major bug in Memory Address Errors Reporting
-	- Patched for Intel-Powered Mac
-	- Pass duration 20% reduced 
-	- Solved a incoherency with pass progress indicator
-	- Patched Makefile to compile on x86_64
-	- Added support for 45 nm Mobile Core 2 w/ 3 Mo L2
-	- Corrected Intel 3-Series (P35/X38) chipset init 
-  - Corrected a bug with SPD Display and ESB6300
-  - Correct a detection bug on P965/G965 C-Stepping
-  - Added support for i945GM/PM/GME & i946PL/GZ
-  - Added support for iGM965/iGL960/iPM965/iGME965/iGLE960
-  - Added detection for SiS 649/656/671/672
-  - Added detection for i430MX/i430TX
-	- Added an optional beep mode (pass completed w/o error)
-	- Removed the blinking cursor
-	- Bootable Memtest86+ ISO more compatible
-	- Reverted Test #0 to cached
+  - Added support for Intel Core i7 (Nehalem) CPU
+ 	- Added support for Intel Atom Processors
+ 	- Added support for Intel G41/G43/G45 Chipsets
+ 	- Added support for Intel P43/P45 Chipsets
+	- Added support for Intel US15W (Poulsbo) Chipset
+  - Added support for Intel EP80579 (Tolapai) SoC CPU
+	- Added support for ICH10 Southbridge (SPD/DMI)
+	- Added detection for Intel 5000X
+  - Added workaround for DDR3 DMI detection
+  - Now fully aware of CPU w/ L3 cache (Core i7 & K10)
+	- Fixed Intel 5000Z chipset detection
+	- Fixed Memory Frequency on AMD K10
+	- Fixed cache detection on C7/Isaiah CPU
+  - Fix Memtest86+ not recognized as Linux Kernel
+
+Warning : GCC 4.2+ is not yet supported. Thanks to the new pointers over/underflows limitations 
+introduced with that version ! Memtest86+ compiled with GCC 4.2+ will result in a non-working 
+binary (hangs in the first seconds). We're working on a fix but there is really many parts of
+the code to check & change everywhere. So, please use GCC 4.1 instead.

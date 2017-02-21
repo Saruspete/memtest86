@@ -387,6 +387,7 @@ not_intel:
 	movl	$0x80000006,%eax	# Use the CPUID instruction to get cache info
 	cpuid
 	movl	%ecx,X86_CACHE+8(%esi)
+	movl	%edx,X86_CACHE+12(%esi)
 	movl	$0x80000007,%eax	# Use the CPUID instruction to get AMD Powercap
 	cpuid
 	movl	%edx,X86_PWRCAP(%esi)

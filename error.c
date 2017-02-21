@@ -6,7 +6,7 @@
  * ----------------------------------------------------
  * MemTest86+ V2.01 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
- * http://www.x86-secret.com - http://www.memtest.org
+ * http://www.canardpc.com - http://www.memtest.org
  */
  
 #include "test.h"

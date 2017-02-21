@@ -89,9 +89,13 @@ static char *form_factors[] = {
 	"SODIMM", "SRIMM", "FB-DIMM"
 };
 
+// Slot 1 is "Other", according to SMBIOS 2.6.
+// BTW, SMBIOS 2.6 doesn't yet recognize DDR3 and I replaced Other to DDR3
+// Need fix as soon as SMBIOS will take DDR3 into consideration
+
 static char *memory_types[] = {
 	"?",
-	"Other", "Unknown", "DRAM", "EDRAM", "VRAM", "SRAM", "RAM",
+	"DDR3", "Unknown", "DRAM", "EDRAM", "VRAM", "SRAM", "RAM",
 	"ROM", "FLASH", "EEPROM", "FEPROM", "EPROM", "CDRAM", "3DRAM",
 	"SDRAM", "SGRAM", "RDRAM", "DDR", "DDR2", "DDR2 FB"
 };
@@ -173,7 +177,9 @@ int open_dmi(void){
 		struct tstruct_header *header = (struct tstruct_header *)dmi;
 		if (header->type == 17)
 			mem_devs[mem_devs_count++]=(struct mem_dev *)dmi;
-		if (header->type == 20)
+		
+		// Need fix (SMBIOS/DDR3)
+		if (header->type == 20 || header->type == 1)
 			md_maps[md_maps_count++]=(struct md_map *)dmi;
 		dmi+=header->length;
 		while( ! (*dmi == 0  && *(dmi+1) == 0 ) )
@@ -268,7 +274,7 @@ void print_dmi_info(void){
 				of += 12;
 			}
 			if (!mapped)
-				cprint(yof+1, POP2_X+17, "No mapping (unused device)");
+				cprint(yof+1, POP2_X+17, "No mapping (Interleaved Device)");
 
 		}
 
