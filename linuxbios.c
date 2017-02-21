@@ -115,11 +115,22 @@ int query_linuxbios(void)
 	struct lb_header *head;
 	struct lb_record *rec;
 	struct lb_memory *mem;
+	struct lb_forward *forward;
 	int i, entries;
+	
 	head = find_lb_table();
 	if (!head) {
 		return 0;
 	}
+
+	 /* coreboot also can forward the table to the high tables area. */
+	 rec = (struct lb_record *)(((char *)head) + sizeof(*head));
+	 if (rec->tag == LB_TAG_FORWARD) {
+		 forward = (struct lb_forward *)rec;
+		 head = (struct lb_header *)(unsigned long)(forward->forward);
+		 if (!head) { return 0;	}
+	 }
+
 	mem = 0;
 	for_each_lbrec(head, rec) {
 		if (rec->tag == LB_TAG_MEMORY) {

@@ -621,7 +621,7 @@ struct spd_jedec_manufacturer jep106[] = {
 		{ 4, 0xe9, "Century Micro"},
 		{ 4, 0xea, "Icera Semiconductor"},
 		{ 4, 0x6b, "Mediaworks Integrated Systems"},
-		{ 4, 0xec, "O?Neil Product Development"},
+		{ 4, 0xec, "O'Neil Product Development"},
 		{ 4, 0x6d, "Supreme Top Technology"},
 		{ 4, 0x6e, "MicroDisplay"},
 		{ 4, 0xef, "Team Group"},

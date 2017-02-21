@@ -56,6 +56,7 @@ struct lb_record {
 #define LB_TAG_UNUSED	0x0000
 
 #define LB_TAG_MEMORY	0x0001
+#define LB_TAG_FORWARD 0x0011
 
 struct lb_memory_range {
 	uint64_t start;
@@ -77,6 +78,12 @@ struct lb_hwrpb {
 	uint32_t tag;
 	uint32_t size;
 	uint64_t hwrpb;
+};
+
+struct lb_forward {
+ uint32_t tag;
+ uint32_t size;
+ uint64_t forward;
 };
 
 #endif /* LINUXBIOS_TABLES_H */

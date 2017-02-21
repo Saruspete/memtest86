@@ -3,7 +3,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
- * MemTest86+ V4.10 Specific code (GPL V2.0)
+ * MemTest86+ V4.20 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.canardpc.com - http://www.memtest.org
  */
@@ -41,7 +41,54 @@ ulong memspeed(ulong src, ulong len, int iter, int type);
 static void cpu_type(void);
 static void cacheable(void);
 static int cpuspeed(void);
-int beepmode;
+int beepmode, fail_safe;
+
+/* Failsafe function */
+/* msec: number of ms to wait - scs: scancode expected to stop */
+void failsafe(int msec, int scs)
+{
+	int ip;
+	ulong sh, sl, l, h, t;
+	unsigned char c;
+	
+	cprint(18, 22, "Press *F1* to enter Fail-Safe Mode");
+	
+	ip = 0;
+	/* save the starting time */
+	asm __volatile__(
+		"rdtsc":"=a" (sl),"=d" (sh));
+
+	/* loop for n seconds */
+	while (1) {
+		asm __volatile__(
+			"rdtsc":"=a" (l),"=d" (h));
+		asm __volatile__ (
+			"subl %2,%0\n\t"
+			"sbbl %3,%1"
+			:"=a" (l), "=d" (h)
+			:"g" (sl), "g" (sh),
+			"0" (l), "1" (h));
+
+		t = h * ((unsigned)0xffffffff / v->clks_msec);
+		t += (l / v->clks_msec);
+
+		/* Is the time up? */
+		if (t >= msec) {
+			cprint(18, 22, "                                  ");
+			break;
+		}
+		
+		/* Is expected Scan code pressed? */
+		c = get_key();
+		c &= 0x7f;
+		
+		if(c == scs) { 
+			fail_safe = 1;
+			cprint(18, 22, "                                  ");
+			break;
+		}		
+	}
+}
 
 static void display_init(void)
 {
@@ -65,7 +112,7 @@ static void display_init(void)
 	for(i=0, pp=(char *)(SCREEN_ADR+1); i<TITLE_WIDTH; i++, pp+=2) {
 		*pp = 0x20;
 	}
-	cprint(0, 0, "      Memtest86  v4.10      ");
+	cprint(0, 0, "      Memtest86  v4.20      ");
 
 	for(i=0, pp=(char *)(SCREEN_ADR+1); i<2; i++, pp+=30) {
 		*pp = 0xA4;
@@ -86,7 +133,7 @@ static void display_init(void)
 void init(void)
 {
 	int i;
-
+	
 	outb(0x8, 0x3f2);  /* Kill Floppy Motor */
 
 	/* Turn on cache */
@@ -94,6 +141,7 @@ void init(void)
 
 	/* Setup the display */
 	display_init();
+	
 
 	/* Determine the memory map */
 	if ((firmware == FIRMWARE_UNKNOWN) &&
@@ -155,11 +203,14 @@ void init(void)
 
 	cpu_type();
 
+  /* Check fail safe */	
+	failsafe(2000, 0x3B);
+
 	/* Find the memory controller */
 	find_controller();
 
 	/* Find Memory Specs */
-	get_spd_spec();	
+	if(fail_safe == 0) { get_spd_spec(); }
 
 	if (v->rdtsc) {
 		cacheable();
@@ -576,18 +627,25 @@ void cpu_type(void)
 				l3_cache = (cpu_id.cache_info[15] << 8);
 				l3_cache += (cpu_id.cache_info[14] >> 2);
 				l3_cache *= 512;
-				imc_type = 0x0101;
 				switch(cpu_id.model) {
+				case 1:
+					imc_type = 0x0102;
+					cprint(LINE_CPU, 0, "AMD Fusion @");
+					off = 12;				
+					break;
 				default:			 
 				case 2:
+					imc_type = 0x0101;
 					cprint(LINE_CPU, 0, "AMD K10 (65nm) @");
 					off = 16;				
 					break;	
 				case 4:
+					imc_type = 0x0101;
 					cprint(LINE_CPU, 0, "AMD K10 (45nm) @");
 					off = 16;				
 					break;				
 				case 9:
+					imc_type = 0x0101;
 					cprint(LINE_CPU, 0, "AMD Magny-Cours");
 					off = 15;				
 					break;			
@@ -913,9 +971,9 @@ void cpu_type(void)
 					if (((cpu_id.ext >> 16) & 0xF) != 0) {
 							tsc_invariable = 1;
 							if(((cpu_id.ext >> 16) & 0xF) > 1) {
-								cprint(LINE_CPU, 0, "Intel SNB");
-								imc_type = 0x0003;
-								off = 9;
+								cprint(LINE_CPU, 0, "Intel Core Gen2");
+								imc_type = 0x0004;
+								off = 15;
 							} else {
 							  imc_type = 0x0001;
 								cprint(LINE_CPU, 0, "Intel Core i7");
@@ -1491,3 +1549,4 @@ ulong correct_tsc(ulong el_org)
 	return el_org;
 
 }
+

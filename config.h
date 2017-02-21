@@ -21,6 +21,9 @@
 /* SERIAL_BAUD_RATE - Baud rate for the serial console */
 #define SERIAL_BAUD_RATE 9600
 
+/* START_FAIL_SAFE - Default 0 = normal. Change to 1 to always start in fail safe mode */
+#define START_FAIL_SAFE 0
+
 /* BEEP_MODE - Beep on error. Default off, Change to 1 to enable */
 #define BEEP_MODE 0
 

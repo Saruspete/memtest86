@@ -3,7 +3,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
- * MemTest86+ V4.00 Specific code (GPL V2.0)
+ * MemTest86+ V4.20 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.canardpc.com - http://www.memtest.org
  */
@@ -23,6 +23,7 @@ int nhm_bus = 0x3F;
 extern ulong extclock;
 extern unsigned long imc_type;
 extern struct cpu_ident cpu_id;
+extern int fail_safe;
 
 #define rdmsr(msr,val1,val2) \
 	__asm__ __volatile__("rdmsr" \
@@ -175,7 +176,13 @@ static void poll_timings_nothing(void)
 	return;
 }
 
-
+static void poll_fsb_failsafe(void)
+{
+/* Code to run for no specific fsb detection */
+	cprint(LINE_CPU+5, 0, "Chipset/IMC : ***FAIL SAFE***FAIL SAFE***FAIL SAFE***FAIL SAFE***FAIL SAFE***");
+	cprint(LINE_CPU+6, 0, "*** Memtest86+ is running in fail safe mode. Same reliability, less details ***");
+	return;
+}
 static void setup_nothing(void)
 {
 	ctrl.cap = ECC_NONE;
@@ -1230,6 +1237,24 @@ static float getNHMmultiplier(void)
 	return coef;
 }
 
+static float getSNBmultiplier(void)
+{
+	unsigned int msr_lo, msr_hi;
+	float coef;
+	
+	rdmsr(0x198, msr_lo, msr_hi);
+	coef = (msr_lo >> 8) & 0xFF;
+	if(coef < 4)
+	{
+		rdmsr(0xCE, msr_lo, msr_hi);
+		coef = (msr_lo >> 16) & 0xFF;		
+	}
+
+
+
+	return coef;
+}
+
 
 void getIntelPNS(void)
 {
@@ -1453,6 +1478,58 @@ static void poll_fsb_k10(void) {
 
 	/* ...and print */
 	print_fsb_info(dramclock, "RAM : ", "DDR");
+
+}
+
+static void poll_fsb_k14(void) {
+
+	unsigned long temp2;
+	unsigned long dramchr;
+	double dramclock;
+	unsigned long pns_low;
+	unsigned long pns_high;
+	unsigned long  msr_psn;
+
+
+		/* If ECC not enabled : display CPU name as IMC */
+		if(ctrl.mode == ECC_NONE)
+			{
+				cprint(LINE_CPU+5, 0, "IMC : ");
+				for(msr_psn = 0; msr_psn < 5; msr_psn++)
+				{		
+					rdmsr(0xC0010030+msr_psn, pns_low,  pns_high);
+					cprint(LINE_CPU+5, 6+(msr_psn*8), convert_hex_to_char(pns_low & 0xff));
+					cprint(LINE_CPU+5, 7+(msr_psn*8), convert_hex_to_char((pns_low >> 8) & 0xff));
+					cprint(LINE_CPU+5, 8+(msr_psn*8), convert_hex_to_char((pns_low >> 16) & 0xff));
+					cprint(LINE_CPU+5, 9+(msr_psn*8), convert_hex_to_char((pns_low >> 24) & 0xff));
+					cprint(LINE_CPU+5, 10+(msr_psn*8), convert_hex_to_char(pns_high & 0xff));
+					cprint(LINE_CPU+5, 11+(msr_psn*8), convert_hex_to_char((pns_high >> 8) & 0xff));
+					cprint(LINE_CPU+5, 12+(msr_psn*8), convert_hex_to_char((pns_high >> 16) & 0xff));
+					cprint(LINE_CPU+5, 13+(msr_psn*8), convert_hex_to_char((pns_high >> 24) & 0xff));
+				}
+				cprint(LINE_CPU+5, 41, "(ECC : Disabled)");
+			}
+
+		/* First, we need the clock ratio */
+		pci_conf_read(0, 24, 2, 0x94, 4, &dramchr);
+		temp2 = (dramchr & 0x1F);
+
+		switch (temp2) {
+			default:
+			case 6: 
+				dramclock = 400; 
+				break;
+			case 10: 
+				dramclock = 533; 
+				break;
+			case 14: 
+				dramclock = 667; 
+				break;
+		}	
+
+
+	/* print */
+	print_fsb_info(dramclock, "RAM : ", "DDR-");
 
 }
 
@@ -2291,6 +2368,50 @@ static void poll_fsb_wmr(void) {
 
 }
 
+static void poll_fsb_snb(void) {
+
+	double dramclock, dramratio, fsb;
+	unsigned long dev0, mchcfg;
+	float coef = getSNBmultiplier();
+	long *ptr;
+	
+	fsb = ((extclock / 1000) / coef);
+
+	if(ctrl.mode == ECC_NONE)
+		{
+			col = 0;
+			cprint(LINE_CPU+5, col, "IMC : "); col += 6;
+			getIntelPNS();	
+			//cprint(LINE_CPU+5, col, "(ECC : Disabled)");
+			//col += 16;
+		}
+
+	/* Print FSB */
+	cprint(LINE_CPU+5, col +1, "/ BCLK : ");
+	col += 10;
+	dprint(LINE_CPU+5, col, fsb, 3,0);
+	col += 3;
+	cprint(LINE_CPU+5, col +1, "MHz");
+	col += 4;
+
+	/* Find dramratio */
+	pci_conf_read( 0, 0, 0, 0x48, 4, &dev0);
+	dev0 &= 0xFFFFC000;
+	ptr=(long*)(dev0+0x5E04);
+	mchcfg = *ptr & 0xFFFF;
+	dramratio = 1;
+	
+	/* Get the clock ratio */
+	dramratio = (float)(*ptr & 0x1F) * (133.34f / 100.0f);
+	
+	// Compute RAM Frequency
+	dramclock = fsb * dramratio;
+
+	// Print DRAM Freq
+	print_fsb_info(dramclock, "RAM : ", "DDR3-");
+
+}
+
 /* ------------------ Here the code for Timings detection ------------------ */
 /* ------------------------------------------------------------------------- */
 
@@ -2747,6 +2868,52 @@ static void poll_timings_wmr(void) {
 
 }
 
+static void poll_timings_snb(void) {
+
+	float cas;
+	int rcd, rp, ras;
+	ulong dev0, offset;
+	ulong IMC_Register, MCMain0_Register, MCMain1_Register;
+	long *ptr;
+
+	//Now, read MMR Base Address
+	pci_conf_read( 0, 0, 0, 0x48, 4, &dev0);
+	dev0 &= 0xFFFFC000;
+	
+	offset = 0x0000;
+
+	ptr = (long*)(dev0+offset+0x4000);
+	IMC_Register = *ptr & 0xFFFFFFFF;
+
+	// CAS Latency (tCAS)
+	cas = (float)((IMC_Register >> 8) & 0x0F);
+
+	// RAS-To-CAS (tRCD)
+	rcd = IMC_Register & 0x0F;
+
+	// RAS Precharge (tRP)
+	rp = (IMC_Register >> 4) & 0x0F;
+
+	// RAS Active to precharge (tRAS)
+	ras = (IMC_Register >> 16) & 0xFF;
+	
+	print_timings_info(cas, rcd, rp, ras);
+
+	cprint(LINE_CPU+6, col2+1, "/"); col2 +=2;
+
+	// Channels
+	ptr = (long*)(dev0+offset+0x5004);
+	MCMain0_Register = *ptr & 0xFFFF;
+	ptr = (long*)(dev0+offset+0x5008);
+	MCMain1_Register = *ptr & 0xFFFF;
+	
+	if(MCMain0_Register == 0 || MCMain1_Register == 0) {
+		cprint(LINE_CPU+6, col2+1, "Single Channel"); 
+	} else {
+		cprint(LINE_CPU+6, col2+1, "Dual Channel"); 
+	}
+
+}
 
 static void poll_timings_5400(void) {
 
@@ -3083,6 +3250,27 @@ static void poll_timings_k10(void) {
 	
 }
 
+static void poll_timings_k14(void) {
+
+	ulong dramt0, dramlow;
+	int cas, rcd, rp, rc, ras;
+	
+	pci_conf_read(0, 24, 2, 0x88, 4, &dramlow);
+	pci_conf_write(0, 24, 2, 0xF0, 4, 0x00000040);
+	pci_conf_read(0, 24, 2, 0xF4, 4, &dramt0);
+
+	cas = (dramlow & 0xF) + 4;
+	rcd = (dramt0 & 0xF) + 5;
+	rp = ((dramt0 >> 8) & 0xF) + 5;
+  ras = ((dramt0 >> 16) & 0x1F) + 15;
+	rc = ((dramt0 >> 24) & 0x3F) + 16;
+
+	print_timings_info(cas, rcd, rp, ras);
+
+	cprint(LINE_CPU+6, col2, "/ DDR3 (64 bits)");
+
+}
+
 static void poll_timings_EP80579(void) {
 
 	ulong drt1, drt2;
@@ -3380,9 +3568,13 @@ static struct pci_memory_controller controllers[] = {
 	{ 0xFFFF, 0x0001, "Core IMC", 	 				0, poll_fsb_nhm, 	poll_timings_nhm, setup_nhm, poll_nothing},
 	{ 0xFFFF, 0x0002, "Core IMC 32nm", 	 		0, poll_fsb_nhm32, 	poll_timings_nhm, setup_nhm32, poll_nothing},
 	{ 0xFFFF, 0x0003, "Core IMC 32nm", 	 		0, poll_fsb_wmr, 	poll_timings_wmr, setup_wmr, poll_nothing},
+	{ 0xFFFF, 0x0004, "SNB IMC 32nm", 	 		0, poll_fsb_snb, 	poll_timings_snb, setup_wmr, poll_nothing},
 	{ 0xFFFF, 0x0100, "AMD K8 IMC",					0, poll_fsb_amd64, poll_timings_amd64, setup_amd64, poll_amd64 },
-	{ 0xFFFF, 0x0101, "AMD K10 IMC",			  0, poll_fsb_k10, poll_timings_k10, setup_k10, poll_nothing }
-	
+	{ 0xFFFF, 0x0101, "AMD K10 IMC",			  0, poll_fsb_k10, poll_timings_k10, setup_k10, poll_nothing },
+	{ 0xFFFF, 0x0102, "AMD APU IMC",			  0, poll_fsb_k14, poll_timings_k14, setup_nothing, poll_nothing },
+
+	/* Fail Safe */
+	{ 0xFFFF, 0xFFFF, "",			  						0, poll_fsb_failsafe, poll_timings_nothing, setup_nothing, poll_nothing }	
 };	
 
 static void print_memory_controller(void)
@@ -3474,6 +3666,7 @@ void find_controller(void)
 	
 	// Detect IMC by CPUID
 	if(imc_type) { vendor = 0xFFFF; device = imc_type; }
+	if(fail_safe) { vendor = 0xFFFF; device = 0xFFFF; }
 	
 	ctrl.index = 0;	
 		if (result == 0) {
