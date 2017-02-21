@@ -3,7 +3,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady
  * ----------------------------------------------------
- * MemTest86+ V2.00 Specific code (GPL V2.0)
+ * MemTest86+ V4.00 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.x86-secret.com - http://www.memtest.org
  */
@@ -17,6 +17,7 @@ extern int bail, beepmode;
 extern struct tseq tseq[];
 extern short e820_nr;
 extern char memsz_mode;
+extern int find_ticks_for_pass();
 //void performance();
 
 char save[2][POP_H][POP_W];
@@ -71,7 +72,7 @@ void get_config()
 						bail++;
 					}
 					v->testsel = -1;
-					find_ticks();
+					find_ticks_for_pass();
 					sflag++;
 					cprint(LINE_INFO, COL_TST, "Std");
 					break;
@@ -95,7 +96,7 @@ void get_config()
 						}
 						v->testsel = i;
 					}
-					find_ticks();
+					find_ticks_for_pass();
 					sflag++;
 					bail++;
 					cprint(LINE_INFO, COL_TST, "#");
@@ -107,7 +108,7 @@ void get_config()
 						v->test = -1;
 					}
 					v->testsel = 9;
-					find_ticks();
+					find_ticks_for_pass();
 					sflag++;
 					bail++;
 					cprint(LINE_INFO, COL_TST, "#");
@@ -120,7 +121,7 @@ void get_config()
 						v->test = -1;
 					}
 					v->testsel = 9+1;
-					find_ticks();
+					find_ticks_for_pass();
 					sflag++;
 					bail++;
 					cprint(LINE_INFO, COL_TST, "#");
@@ -163,7 +164,7 @@ void get_config()
 						bail++;
 					}
 					adj_mem();
-					find_ticks();
+					find_ticks_for_pass();
 					sflag++;
 					break;
 				case 3:
@@ -183,7 +184,7 @@ void get_config()
 						bail++;
 					}
 					adj_mem();
-					find_ticks();
+					find_ticks_for_pass();
 					sflag++;
 					break;
 				case 4:
@@ -193,7 +194,7 @@ void get_config()
 					v->test--;
 					bail++;
 					adj_mem();
-					find_ticks();
+					find_ticks_for_pass();
 					sflag++;
 					break;
 				case 11:
@@ -210,14 +211,9 @@ void get_config()
 			popclear();
 			cprint(POP_Y+1, POP_X+2, "Memory Sizing:");
 			cprint(POP_Y+3, POP_X+6, "(1) BIOS - Std");
-			if (e820_nr) {
-				cprint(POP_Y+4, POP_X+6, "(2) BIOS - All");
-				cprint(POP_Y+5, POP_X+6, "(3) Probe");
-				cprint(POP_Y+6, POP_X+6, "(0) Continue");
-				cprint(POP_Y+2+memsz_mode, POP_X+5, ">");
-			} else {
-				cprint(POP_Y+4, POP_X+6, "(3) Probe");
+				cprint(POP_Y+4, POP_X+6, "(2) Probe");
 				cprint(POP_Y+5, POP_X+6, "(0) Continue");
+			if(!e820_nr){
 				if (memsz_mode == SZ_MODE_BIOS) {
 					cprint(POP_Y+3, POP_X+5, ">");
 				} else {
@@ -234,12 +230,6 @@ void get_config()
 
 					break;
 				case 3:
-					memsz_mode = SZ_MODE_BIOS_RES;
-					wait_keyup();
-					restart();
-
-					break;
-				case 4:
 					memsz_mode = SZ_MODE_PROBE;
 					wait_keyup();
 					restart();

@@ -48,5 +48,13 @@ typedef unsigned int       uintptr_t;
 typedef long long int      intmax_t;
 typedef unsigned long long uintmax_t;
 
+typedef char           bool;
+#ifndef FALSE
+#define FALSE          0
+#endif
+
+#ifndef TRUE
+#define TRUE           1
+#endif
 
 #endif /* I386_STDINT_H */

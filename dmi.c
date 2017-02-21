@@ -5,8 +5,7 @@
  *
  * Release under the GPL version 2
  * ----------------------------------------------------
- * Memtest86+ V1.70 - Added compliance with SMBIOS Spec V2.5
- *									- Support for FB-DIMM
+ * Memtest86+ V4.00 - Added compliance with SMBIOS Spec V2.6.1
  */
 
 
@@ -89,15 +88,13 @@ static char *form_factors[] = {
 	"SODIMM", "SRIMM", "FB-DIMM"
 };
 
-// Slot 1 is "Other", according to SMBIOS 2.6.
-// BTW, SMBIOS 2.6 doesn't yet recognize DDR3 and I replaced Other to DDR3
-// Need fix as soon as SMBIOS will take DDR3 into consideration
 
 static char *memory_types[] = {
 	"?",
-	"DDR3", "Unknown", "DRAM", "EDRAM", "VRAM", "SRAM", "RAM",
+	"Other", "Unknown", "DRAM", "EDRAM", "VRAM", "SRAM", "RAM",
 	"ROM", "FLASH", "EEPROM", "FEPROM", "EPROM", "CDRAM", "3DRAM",
-	"SDRAM", "SGRAM", "RDRAM", "DDR", "DDR2", "DDR2 FB"
+	"SDRAM", "SGRAM", "RDRAM", "DDR", "DDR2", "DDR2 FB", "RSVD",
+  "RSVD","RSVD","DDR3","FBD2"
 };
 
 

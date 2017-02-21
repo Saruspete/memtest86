@@ -3,7 +3,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady
  * ----------------------------------------------------
- * MemTest86+ V2.01 Specific code (GPL V2.0)
+ * MemTest86+ V4.00 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.canardpc.com - http://www.memtest.org
  */
@@ -17,17 +17,17 @@
 extern void bzero();
 
 const struct tseq tseq[] = {
-	{1,  5,  3,   0, 0, "[Address test, walking ones, uncached]"},
-	{1,  6,  3,   2, 0, "[Address test, own address]           "},
-	{1,  0,  3,  14, 0, "[Moving inversions, ones & zeros]     "},
-	{1,  1,  2,  80, 0, "[Moving inversions, 8 bit pattern]    "},
-	{1, 10, 60, 300, 0, "[Moving inversions, random pattern]   "},
-	{1,  7, 64,  66, 0, "[Block move, 64 moves]                "},
-	{1,  2,  2, 320, 0, "[Moving inversions, 32 bit pattern]   "},
-	{1,  9, 40,	120, 0, "[Random number sequence]              "},
-	{1,  3,  2, 360, 0, "[Modulo 20, random pattern]           "},
-	{1,  8,  1,		2, 0, "[Bit fade test, 90 min, 2 patterns]   "},
-	{0,  0,  0,   0, 0, NULL}
+	{1,  5,   4, 0, "[Address test, walking ones]          "},
+	{1,  6,   4, 0, "[Address test, own address]           "},
+	{1,  0,   4, 0, "[Moving inversions, ones & zeros]     "},
+	{1,  1,   2, 0, "[Moving inversions, 8 bit pattern]    "},
+	{1, 10,  50, 0, "[Moving inversions, random pattern]   "},
+	{1,  7,  80, 0, "[Block move, 80 moves]                "},
+	{1,  2,   2, 0, "[Moving inversions, 32 bit pattern]   "},
+	{1,  9,  30, 0, "[Random number sequence]              "},
+  {1, 11,   6, 0, "[Modulo 20, Random pattern]           "},
+	{1,  8,   1, 0, "[Bit fade test, 90 min, 2 patterns]   "},
+	{0,  0,   0, 0, NULL}
 };
 
 char firsttime = 0;
@@ -44,6 +44,7 @@ int nticks;
 ulong high_test_adr = 0x200000;
 
 static int window = 0;
+static int c_iter;
 static struct pmap windows[] =
 {
 	{ 0, 0x080000 },
@@ -101,8 +102,9 @@ static struct pmap windows[] =
 #error LOW_TEST_ADR must be below 640K
 #endif
 
-static int find_ticks_for_test(unsigned long chunks, int test);
-static void compute_segments(int win);
+static int find_ticks_for_test(int ch, int test);
+static int compute_segments(int win);
+void find_ticks_for_pass(void);
 
 static void __run_at(unsigned long addr)
 {
@@ -196,7 +198,11 @@ void do_test(void)
 		if ((ulong)&_start != LOW_TEST_ADR) {
 			restart();
 		}
+		
 		init();
+		
+		find_ticks_for_pass();
+		
 		windows[0].start = 
 			( LOW_TEST_ADR + (_end - _start) + 4095) >> 12;
 
@@ -279,6 +285,13 @@ void do_test(void)
 	if (v->testsel >= 0) {
 		v->test = v->testsel;
 	}
+	
+	if (v->pass == 0) {
+		c_iter = tseq[v->test].iter/2;
+	} else {
+		c_iter = tseq[v->test].iter;
+	}
+	
 	dprint(LINE_TST, COL_MID+6, v->test, 2, 1);
 	cprint(LINE_TST, COL_MID+9, tseq[v->test].msg);
 	set_cache(tseq[v->test].cache);
@@ -297,103 +310,126 @@ void do_test(void)
 	switch(tseq[v->test].pat) {
 
 	/* Now do the testing according to the selected pattern */
-	case 0:	/* Moving inversions, all ones and zeros */
-	case 4:
+	case 0:	/* Moving inversions, all ones and zeros (test #2) */
+		p1 = 0;
+		p2 = ~p1;
+		movinv1(c_iter,p1,p2);
+		BAILOUT;
 	
-		if (tseq[v->test].pat == 1)
-			p0 = 0x80808080;
-		else
-			p0 = 0;
-
-		for ( ; ; ) {
-			movinv1(tseq[v->test].iter,p0,~p0);
-			BAILOUT;
-
-			/* Switch patterns */
-			movinv1(tseq[v->test].iter,~p0,p0);
-			BAILOUT
-			if ( !((unsigned char)(p0 >>= 1) & 0x7F) )
-				break;
-		}
+		/* Switch patterns */
+		p2 = p1;
+		p1 = ~p2;
+		movinv1(c_iter,p1,p2);
+		BAILOUT;
 		break;
-
-	case 1: /* Moving inversions, 8 bit wide walking ones and zeros. */
+		
+	case 1: /* Moving inversions, 8 bit walking ones and zeros (test #3) */
 		p0 = 0x80;
 		for (i=0; i<8; i++, p0=p0>>1) {
 			p1 = p0 | (p0<<8) | (p0<<16) | (p0<<24);
 			p2 = ~p1;
-			movinv1(tseq[v->test].iter,p1,p2);
+			movinv1(c_iter,p1,p2);
 			BAILOUT;
 	
 			/* Switch patterns */
 			p2 = p1;
 			p1 = ~p2;
-			movinv1(tseq[v->test].iter,p1,p2);
-			BAILOUT
-		}
-		break;		
-	
-
-	case 2: /* Moving inversions, 32 bit shifting pattern, very long */
-		for (i=0, p1=1; p1; p1=p1<<1, i++) {
-			movinv32(tseq[v->test].iter,p1, 1, 0x80000000, 0, i);
-			BAILOUT
-			movinv32(tseq[v->test].iter,~p1, 0xfffffffe, 0x7fffffff, 1, i);
+			movinv1(c_iter,p1,p2);
 			BAILOUT
 		}
 		break;
 
-	case 3: /* Modulo 20, random */
-		for (j=0; j<tseq[v->test].iter; j++) {
-			p1 = rand();
+	case 2: /* Moving inversions, 32 bit shifting pattern (test #6) */
+		for (i=0, p1=1; p1; p1=p1<<1, i++) {
+			movinv32(c_iter,p1, 1, 0x80000000, 0, i);
+			BAILOUT
+			movinv32(c_iter,~p1, 0xfffffffe,
+				0x7fffffff, 1, i);
+			BAILOUT
+		}
+		break;
+
+	case 3: /* Modulo 20 check, all ones and zeros (unused) */
+		p1=0;
+		for (i=0; i<MOD_SZ; i++) {
+			p2 = ~p1;
+			modtst(i, c_iter, p1, p2);
+			BAILOUT
+
+			/* Switch patterns */
+			p2 = p1;
+			p1 = ~p2;
+			modtst(i, c_iter, p1,p2);
+			BAILOUT
+		}
+		break;
+
+	case 4: /* Modulo 20 check, 8 bit pattern (unused) */
+		p0 = 0x80;
+		for (j=0; j<8; j++, p0=p0>>1) {
+			p1 = p0 | (p0<<8) | (p0<<16) | (p0<<24);
 			for (i=0; i<MOD_SZ; i++) {
 				p2 = ~p1;
-				modtst(i, tseq[v->test].iter, p1, p2);
+				modtst(i, c_iter, p1, p2);
 				BAILOUT
 
 				/* Switch patterns */
 				p2 = p1;
 				p1 = ~p2;
-				modtst(i, tseq[v->test].iter, p1, p2);
+				modtst(i, c_iter, p1, p2);
 				BAILOUT
 			}
 		}
 		break;
-
-	case 5: /* Address test, walking ones */
+	case 5: /* Address test, walking ones (test #0) */
 		addr_tst1();
 		BAILOUT;
 		break;
 
-	case 6: /* Address test, own address */
+	case 6: /* Address test, own address (test #1) */
 		addr_tst2();
 		BAILOUT;
 		break;
 
-	case 7: /* Block move test */
-		block_move(tseq[v->test].iter);
+	case 7: /* Block move (test #5) */
+		block_move(c_iter);
 		BAILOUT;
 		break;
-
-	case 8: /* Bit fade test */
+	case 8: /* Bit fade test (test #9) */
 		if (window == 0 ) {
 			bit_fade();
 		}
 		BAILOUT;
 		break;
-		
-	case 9: /* Random Data Sequence */
-		for (i=0; i < tseq[v->test].iter; i++) {
+	case 9: /* Random Data Sequence (test #7) */
+		for (i=0; i < c_iter; i++) {
 			movinvr();
 			BAILOUT;
 		}
 		break;
-	case 10: /* Random Data */
-		for (i=0; i < tseq[v->test].iter; i++) {
+	case 10: /* Random Data (test #4) */
+		for (i=0; i < c_iter; i++) {
 			p1 = rand();
 			p2 = ~p1;
 			movinv1(2,p1,p2);
 			BAILOUT;
+		}
+		break;
+
+	case 11: /* Modulo 20 check, Random pattern (test #8) */
+		for (j=0; j<c_iter; j++) {
+			p1 = rand();
+			for (i=0; i<MOD_SZ; i++) {
+				p2 = ~p1;
+				modtst(i, 2, p1, p2);
+				BAILOUT
+
+				/* Switch patterns */
+				p2 = p1;
+				p1 = ~p2;
+				modtst(i, 2, p1, p2);
+				BAILOUT
+			}
 		}
 		break;
 	}
@@ -458,8 +494,8 @@ void do_test(void)
 			cprint(0, COL_MID+8,
 				"                                         ");
 			if (v->ecount == 0 && v->testsel < 0) {
-			    cprint(LINE_MSG, COL_MSG,
-				"Pass complete, no errors, press Esc to exit");
+			    cprint(LINE_MSG+5, 0,
+				"              *****Pass complete, no errors, press Esc to exit*****            ");
 				if(BEEP_END_NO_ERROR) {
 					beep(1000);
 					beep(2000);
@@ -494,9 +530,7 @@ void restart()
 	run_at(LOW_TEST_ADR);
 }
 
-
-/* Compute the total number of ticks per pass */
-void find_ticks(void)
+void find_ticks_for_pass(void)
 {
 	int i, j, chunks;
 
@@ -526,18 +560,62 @@ void find_ticks(void)
 	}
 }
 
-static int find_ticks_for_test(unsigned long chunks, int test)
+
+static int find_ticks_for_test(int ch, int test)
 {
-	int ticks;
-	ticks = chunks * tseq[test].ticks;
-	if (tseq[test].pat == 5) {
-		/* Address test, walking ones */
-		ticks = 4;
+	int ticks=0, c;
+
+	/* Set the number of iterations. We only do half of the iterations */
+        /* on the first pass */
+	if (v->pass == 0 && FIRST_PASS_HALF_ITERATIONS) {
+		c = tseq[test].iter/2;
+	} else {
+		c = tseq[test].iter;
 	}
-	return ticks;
+
+	switch(tseq[test].pat) {
+	case 0: /* Moving inversions, all ones and zeros (test #2) */
+		ticks = 2 + 4 * c;
+		break;
+	case 1: /* Moving inversions, 8 bit walking ones and zeros (test #3) */
+		ticks = 24 + 24 * c;
+		break;
+	case 2: /* Moving inversions, 32 bit shifting pattern, very long */
+		ticks = (1 + c * 2) * 80;
+		break;
+	case 3: /* Modulo 20 check, all ones and zeros (unused) */
+		ticks = (2 + c) * 40;
+		break;
+	case 4: /* Modulo 20 check, 8 bit pattern (unused) */
+		ticks = (2 + c) * 40 * 8;
+		break;
+	case 5: /* Address test, walking ones (test #0) */
+		ticks = 4;
+		break;
+	case 6: /* Address test, own address (test #1) */
+		ticks = 2;
+		break;
+	case 7: /* Block move (test #5) */
+		ticks = 2 + c;
+		break;
+	case 8: /* Bit fade test (test #9) */
+		ticks = 1;
+		break;
+	case 9: /* Random Data Sequence (test #7) */
+		ticks = 3 * c;
+		break;
+	case 10: /* Random Data (test #4) */
+		ticks = c + 4 * c;
+		break;
+	case 11: /* Modulo 20 check, Random pattern (test #8) */
+		ticks = 4 * 40 * c;
+		break;
+	}
+
+	return ticks*ch;
 }
 
-static void compute_segments(int win)
+static int compute_segments(int win)
 {
 	unsigned long wstart, wend;
 	int i;
@@ -555,7 +633,7 @@ static void compute_segments(int win)
 		wend = v->plim_upper;
 	}
 	if (wstart >= wend) {
-		return;
+		return(0);
 	}
 	/* List the segments being tested */
 	for (i=0; i< v->msegs; i++) {
@@ -601,11 +679,11 @@ static void compute_segments(int win)
 
 		cprint(LINE_SCROLL+(2*i+1), 44, "i=");
 		hprint(LINE_SCROLL+(2*i+1), 46, i);
-
-		cprint(LINE_SCROLL+(2*i+2), 0,
+		
+		cprint(LINE_SCROLL+(2*i+2), 0, 
 			"                                        "
 			"                                        ");
-		cprint(LINE_SCROLL+(2*i+3), 0,
+		cprint(LINE_SCROLL+(2*i+3), 0, 
 			"                                        "
 			"                                        ");
 #endif
@@ -614,10 +692,12 @@ static void compute_segments(int win)
 			v->map[segs].start = mapping(start);
 			v->map[segs].end = emapping(end);
 #if 0
-			cprint(LINE_SCROLL+(2*i+1), 54, " segs: ");
-			hprint(LINE_SCROLL+(2*i+1), 61, segs);
+			cprint(LINE_SCROLL+(2*i+1), 54, " sg: ");
+			hprint(LINE_SCROLL+(2*i+1), 61, sg);
 #endif
 			segs++;
 		}
 	}
+	return (segs);
 }
+

@@ -1,4 +1,4 @@
-/* memsize.c - MemTest-86  Version 3.2
+/* memsize.c - MemTest-86  Version 3.3
  *
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady
@@ -21,11 +21,11 @@ extern volatile ulong *p;
 
 static void sort_pmap(void);
 static int check_ram(void);
-static void memsize_bios(int res);
-static void memsize_820(int res);
+static void memsize_bios(void);
+static void memsize_820(void);
 static void memsize_801(void);
-static int sanitize_e820_map(struct e820entry *orig_map, struct e820entry *new_bios,
-	short old_nr, short res);
+static int sanitize_e820_map(struct e820entry *orig_map,
+	struct e820entry *new_bios, short old_nr);
 static void memsize_linuxbios();
 static void memsize_probe(void);
 static int check_ram(void);
@@ -56,16 +56,12 @@ void mem_size(void)
 	switch (memsz_mode) {
 	case SZ_MODE_BIOS:
 		/* Get the memory size from the BIOS */
-		memsize_bios(0);
-		break;
-	case SZ_MODE_BIOS_RES:
-		/* Get the memory size from the BIOS, include reserved mem */
-		memsize_bios(1);
+		memsize_bios();
 		break;
 	case SZ_MODE_PROBE:
 		/* Probe to find memory */
 		memsize_probe();
-		cprint(LINE_INFO, COL_MMAP, " Probed ");
+		cprint(LINE_INFO, COL_MMAP, "Probed");
 		break;
 	}
 	/* Guarantee that pmap entries are in ascending order */
@@ -77,10 +73,10 @@ void mem_size(void)
 	aprint(LINE_INFO, COL_RESERVED, v->reserved_pages);
 }
 
-static void memsize_bios(int res)
+static void memsize_bios()
 {
 	if (firmware == FIRMWARE_PCBIOS) {
-		memsize_820(res);
+		memsize_820();
 	}
 	else if (firmware == FIRMWARE_LINUXBIOS) {
 		memsize_linuxbios();
@@ -105,7 +101,7 @@ static void sort_pmap(void)
 		if (i != j) {
 			struct pmap temp;
 			temp = v->pmap[i];
-			memmove(&v->pmap[j], &v->pmap[j+1],
+			memmove(&v->pmap[j], &v->pmap[j+1], 
 				(i -j)* sizeof(temp));
 			v->pmap[j] = temp;
 		}
@@ -129,16 +125,15 @@ static void memsize_linuxbios(void)
 		n++;
 	}
 	v->msegs = n;
-	cprint(LINE_INFO, COL_MMAP, "LinuxBIOS");
+	cprint(LINE_INFO, COL_MMAP, "LxBIOS");
 }
-static void memsize_820(int res)
+static void memsize_820()
 {
 	int i, n, nr;
 	struct e820entry nm[E820MAX];
 
 	/* Clean up, adjust and copy the BIOS-supplied E820-map. */
-	/* If the res arg is true reclassify reserved memory as E820_RAM */
-	nr = sanitize_e820_map(e820, nm, e820_nr, res);
+	nr = sanitize_e820_map(e820, nm, e820_nr);
 
 	/* If there is not a good 820 map use the BIOS 801/88 info */
 	if (nr < 1 || nr > E820MAX) {
@@ -149,7 +144,7 @@ static void memsize_820(int res)
 	/* Build the memory map for testing */
 	n = 0;
 	for (i=0; i<nr; i++) {
-		if (nm[i].type == E820_RAM) {
+		if (nm[i].type == E820_RAM || nm[i].type == E820_ACPI) {
 			unsigned long long start;
 			unsigned long long end;
 			start = nm[i].addr;
@@ -169,24 +164,14 @@ static void memsize_820(int res)
 			v->pmap[n].end = end >> 12;
 			v->test_pages += v->pmap[n].end - v->pmap[n].start;
 			n++;
-		} else {
-			/* If this is reserved memory starting at the top
-			 * of memory then don't count it as reserved, since
-			 * it is very unlikely to be real memory.
-			 */
-			if (nm[i].addr < 0xff000000) {
-				v->reserved_pages += nm[i].size >> 12;
-			}
+		} else if (nm[i].type == E820_NVS) {
+			v->reserved_pages += nm[i].size >> 12;
 		}
 	}
 	v->msegs = n;
-	if (res) {
-		cprint(LINE_INFO, COL_MMAP, "e820-All");
-	} else {
-		cprint(LINE_INFO, COL_MMAP, "e820-Std");
-	}
+	cprint(LINE_INFO, COL_MMAP, "  e820");
 }
-
+	
 static void memsize_801(void)
 {
 	ulong mem_size;
@@ -196,10 +181,10 @@ static void memsize_801(void)
 
 	if (alt_mem_k < ext_mem_k) {
 		mem_size = ext_mem_k;
-		cprint(LINE_INFO, COL_MMAP, "e88-Std ");
+		cprint(LINE_INFO, COL_MMAP, "   e88");
 	} else {
 		mem_size = alt_mem_k;
-		cprint(LINE_INFO, COL_MMAP, "e801-Std");
+		cprint(LINE_INFO, COL_MMAP, "  e801");
 	}
 	/* First we map in the first 640k */
 	v->pmap[0].start = 0;
@@ -216,12 +201,12 @@ static void memsize_801(void)
 /*
  * Sanitize the BIOS e820 map.
  *
- * Some e820 responses include overlapping entries.  The following
+ * Some e820 responses include overlapping entries.  The following 
  * replaces the original e820 map with a new one, removing overlaps.
  *
  */
 static int sanitize_e820_map(struct e820entry *orig_map, struct e820entry *new_bios,
-	short old_nr, short res)
+	short old_nr)
 {
 	struct change_member {
 		struct e820entry *pbios; /* pointer to original bios entry */
@@ -284,22 +269,6 @@ static int sanitize_e820_map(struct e820entry *orig_map, struct e820entry *new_b
 	for (i=0; i<old_nr; i++) {
 		if (biosmap[i].addr + biosmap[i].size < biosmap[i].addr)
 			return 0;
-		if (res) {
-			/* If we want to test the reserved memory include
-			 * everything except for reserved segments that start
-			 * at the  the top of memory
-			 */
-			if (biosmap[i].type == E820_RESERVED &&
-					biosmap[i].addr > 0xff000000) {
-				continue;
-			}
-			biosmap[i].type = E820_RAM;
-		} else {
-			/* It is always be safe to test ACPI ram */
-			if ( biosmap[i].type == E820_ACPI) {
-				biosmap[i].type = E820_RAM;
-			}
-		}
 	}
 
 	/* create pointers for initial change-point information (for sorting) */
@@ -374,7 +343,7 @@ static int sanitize_e820_map(struct e820entry *orig_map, struct e820entry *new_b
 				/* move forward only if the new size was non-zero */
 				if (new_bios[new_bios_entry].size != 0)
 					if (++new_bios_entry >= E820MAX)
-						break;	/* no more space left for new bios entries */
+						break; 	/* no more space left for new bios entries */
 			}
 			if (current_type != 0)	{
 				new_bios[new_bios_entry].addr = change_point[chgidx]->addr;
@@ -397,8 +366,8 @@ static void memsize_probe(void)
 	 * must be limited.  The max address is found by checking for
 	 * memory wrap from 1MB to 4GB.  */
 	p1 = (ulong)&magic;
-	m_lim = 0xfffffffc;
-	for (p2 = 0x100000; p2; p2 <<= 1) {
+	m_lim = 0xfffffffc; 
+	for (p2 = 0x100000; p2; p2 <<= 1) {  
 		p = (ulong *)(p1 + p2);
 		if (*p == 0x1234569) {
 			m_lim = --p2;
@@ -415,7 +384,7 @@ static void memsize_probe(void)
 	v->pmap[i].start = ((ulong)&_end + (1 << 12) - 1) >> 12;
 	p = (ulong *)(v->pmap[i].start << 12);
 
-	/* Limit search for memory to m_lim and make sure we don't
+	/* Limit search for memory to m_lim and make sure we don't 
 	 * overflow the 32 bit size of p.  */
 	while ((ulong)p < m_lim && (ulong)p >= (ulong)&_end) {
 		/*
@@ -482,34 +451,34 @@ fstart:
  * We then check that at least one bit changed in each byte before
  * believing that it really is memory.  */
 
-static int check_ram(void)
+static int check_ram(void) 
 {
-	int s;
+        int s;
 
-	p1 = *p;
+        p1 = *p;
 
-	/* write the complement */
-	*p = ~p1;
-	p2 = *p;
-	s = 0;
+        /* write the complement */
+        *p = ~p1;
+        p2 = *p;
+        s = 0;
 
-	/* Now make sure a bit changed in each byte */
-	if ((0xff & p1) != (0xff & p2)) {
-		s++;
-	}
-	if ((0xff00 & p1) != (0xff00 & p2)) {
-		s++;
-	}
-	if ((0xff0000 & p1) != (0xff0000 & p2)) {
-		s++;
-	}
-	if ((0xff000000 & p1) != (0xff000000 & p2)) {
-		s++;
-	}
-	if (s == 4) {
-		/* RAM at this address */
-		return 1;
-	}
+        /* Now make sure a bit changed in each byte */
+        if ((0xff & p1) != (0xff & p2)) {
+                s++;
+        }
+        if ((0xff00 & p1) != (0xff00 & p2)) {
+                s++;
+        }
+        if ((0xff0000 & p1) != (0xff0000 & p2)) {
+                s++;
+        }
+        if ((0xff000000 & p1) != (0xff000000 & p2)) {
+                s++;
+        }
+        if (s == 4) {
+                /* RAM at this address */
+                return 1;
+        }
 
-	return 0;
+        return 0;
 }

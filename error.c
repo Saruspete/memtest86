@@ -4,7 +4,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
- * MemTest86+ V2.01 Specific code (GPL V2.0)
+ * MemTest86+ V4.00 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.canardpc.com - http://www.memtest.org
  */
@@ -13,6 +13,7 @@
 #include "config.h"
 #include <sys/io.h>
 #include "dmi.h"
+#define NULL 0
 
 extern int test_ticks, nticks, beepmode;
 extern struct tseq tseq[];
@@ -158,7 +159,7 @@ void common_err( ulong *adr, ulong good, ulong bad, ulong xor, int type)
 		  hprint2(LINE_HEADER+1, 33, offset, 3);
 		  cprint(LINE_HEADER+1, 36, " -      . MB");
 		  dprint(LINE_HEADER+1, 39, mb, 5, 0);
-		  dprint(LINE_HEADER+1, 45, ((page & 0xF)*10)/16, 1, 0);
+		  dprint(LINE_HEADER+1, 45, ((page & 0xFF)*10)/256, 1, 0);
 		  page = v->erri.high_addr.page;
 		  offset = v->erri.high_addr.offset;
 		  mb = page >> 8;
@@ -166,7 +167,7 @@ void common_err( ulong *adr, ulong good, ulong bad, ulong xor, int type)
 		  hprint2(LINE_HEADER+2, 33, offset, 3);
 		  cprint(LINE_HEADER+2, 36, " -      . MB");
 		  dprint(LINE_HEADER+2, 39, mb, 5, 0);
-		  dprint(LINE_HEADER+2, 45, ((page & 0xF)*10)/16, 1, 0);
+		  dprint(LINE_HEADER+2, 45, ((page & 0xFF)*10)/256, 1, 0);
 		  hprint(LINE_HEADER+3, 25, v->erri.ebits);
 		  dprint(LINE_HEADER+4, 25, n, 2, 1);
 		  dprint(LINE_HEADER+4, 34, v->erri.min_bits, 2, 1);
@@ -228,7 +229,7 @@ void common_err( ulong *adr, ulong good, ulong bad, ulong xor, int type)
 		hprint2(v->msg_line, 19, offset, 3);
 		cprint(v->msg_line, 22, " -      . MB");
 		dprint(v->msg_line, 25, mb, 5, 0);
-		dprint(v->msg_line, 31, ((page & 0xF)*10)/16, 1, 0);
+		dprint(v->msg_line, 31, ((page & 0xFF)*10)/256, 1, 0);
 
 		if (type == 3) {
 			/* ECC error */
@@ -439,7 +440,15 @@ void do_tick(void)
 	nticks++;
 	v->total_ticks++;
 
-	pct = 100*nticks/test_ticks;
+	if (test_ticks) {
+		pct = 100*nticks/test_ticks;
+		if (pct > 100) {
+			pct = 100;
+		}
+	} else {
+		pct = 0;
+	}
+	
 	dprint(1, COL_MID+4, pct, 3, 0);
 	i = (BAR_SIZE * pct) / 100;
 	while (i > v->tptr) {
@@ -450,7 +459,12 @@ void do_tick(void)
 		v->tptr++;
 	}
 	
-	pct = 100*v->total_ticks/v->pass_ticks;
+	if (v->pass_ticks) {
+		pct = 100*v->total_ticks/v->pass_ticks;
+		if (pct > 100) { pct = 100;	}
+	} else {
+		pct = 0;
+  }
 	dprint(0, COL_MID+4, pct, 3, 0);
 	i = (BAR_SIZE * pct) / 100;
 	while (i > v->pptr) {

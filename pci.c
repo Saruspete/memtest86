@@ -3,7 +3,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady
  * ----------------------------------------------------
- * MemTest86+ V1.94 Specific code (GPL V2.0)
+ * MemTest86+ V4.00 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.x86-secret.com - http://www.memtest.org
  */
@@ -25,17 +25,24 @@ static unsigned char pci_conf_type = PCI_CONF_TYPE_NONE;
 
 #define PCI_CONF2_ADDRESS(dev, reg)	(unsigned short)(0xC000 | (dev << 8) | reg)
 
+#define PCI_CONF3_ADDRESS(bus, dev, fn, reg) \
+	(0x80000000 | (((reg >> 8) & 0xF) << 24) | (bus << 16) | ((dev & 0x1F) << 11) | (fn << 8) | (reg & 0xFF))
+
 int pci_conf_read(unsigned bus, unsigned dev, unsigned fn, unsigned reg, unsigned len, unsigned long *value)
 {
 	int result;
 
-	if (!value || (bus > 255) || (dev > 31) || (fn > 7) || (reg > 255))
+	if (!value || (bus > 255) || (dev > 31) || (fn > 7) || (reg > 255 && pci_conf_type != PCI_CONF_TYPE_1))
 		return -1;
 
 	result = -1;
 	switch(pci_conf_type) {
 	case PCI_CONF_TYPE_1:
-		outl(PCI_CONF1_ADDRESS(bus, dev, fn, reg), 0xCF8);
+		if(reg < 256){
+			outl(PCI_CONF1_ADDRESS(bus, dev, fn, reg), 0xCF8);
+		}else{
+			outl(PCI_CONF3_ADDRESS(bus, dev, fn, reg), 0xCF8);		
+		}
 		switch(len) {
 		case 1:  *value = inb(0xCFC + (reg & 3)); result = 0; break;
 		case 2:  *value = inw(0xCFC + (reg & 2)); result = 0; break;

@@ -8,7 +8,8 @@
  * http://www.canardpc.com - http://www.memtest.org
  */
 
-
+#ifndef _TEST_H_
+#define _TEST_H_
 #define E88     0x00
 #define E801    0x04
 #define E820NR  0x08           /* # entries in E820MAP */
@@ -16,6 +17,7 @@
 #define E820MAX 32             /* number of entries in E820MAP */
 #define E820ENTRY_SIZE 20
 #define MEMINFO_SIZE 0x28c
+#define MAX_DMI_MEMDEVS 16
 
 #ifndef __ASSEMBLY__
 
@@ -39,10 +41,11 @@ struct mem_info_t {
 };
 
 typedef unsigned long ulong;
-#define SPINSZ		0x800000
+#define SPINSZ		0x2000000
 #define MOD_SZ		20
 #define BAILOUT		if (bail) goto skip_test;
 #define BAILR		if (bail) return;
+#define NULL 0
 
 #define DMI_SEARCH_START  0x0000F000
 #define DMI_SEARCH_LENGTH 0x000F0FFF
@@ -86,7 +89,7 @@ typedef unsigned long ulong;
 #define POP2_H	21
 #define POP2_X	3
 #define POP2_Y	2
-#define NULL	0
+//#define NULL	0
 
 /* memspeed operations */
 #define MS_COPY		1
@@ -152,6 +155,7 @@ void addr_tst2(void);
 void bit_fade(void);
 void sleep(int sec, int sms);
 void beep(unsigned int frequency);
+int getnum(ulong val);
 void block_move(int iter);
 void find_ticks(void);
 void print_err(ulong *adr, ulong good, ulong bad, ulong xor);
@@ -249,7 +253,6 @@ struct tseq {
 	short cache;
 	short pat;
 	short iter;
-	short ticks;
 	short errors;
 	char *msg;
 };
@@ -292,7 +295,7 @@ struct err_info {
 
 /* Define common variables accross relocations of memtest86+ */
 struct vars {
-	int test;
+	volatile int test;
 	int pass;
 	unsigned long *eadr;
 	unsigned long exor;
@@ -320,6 +323,7 @@ struct vars {
 	ulong snaph;
 	ulong snapl;
 	ulong extclock;
+	unsigned long imc_type;
 	int printmode;
 	int numpatn;
 	struct pair patn [BADRAM_MAXPATNS];
@@ -338,4 +342,10 @@ extern unsigned char _size, _pages;
 
 extern struct mem_info_t mem_info;
 
+/* CPU mode types */
+#define CPM_SINGLE 1
+#define CPM_RROBIN 2
+#define CPM_SEQ    3
+
 #endif /* __ASSEMBLY__ */
+#endif /* _TEST_H_ */

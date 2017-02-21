@@ -1,10 +1,19 @@
-Memtest86+ V2.11 changelog
+Memtest86+ V4.00 changelog
 --------------------------
 
-  - Added support for Intel Core i5 (Lynnfield) CPU
-  - Added support for Intel P55 Southbridge
-  - Added support for Intel PM45/GM45/GM47 Mobile chipset
-  - Added support for Intel GL40/GS45 Mobile chipset
-  - Corrected DDR2/DDR3 detection on Intel x35/x45
-  - Corrected detection on some Core i7 CPU 
-  - Various bug fixes
+  - Major Architectural changes
+  - First pass twice faster (reduced iterations)
+  - Detect DDR2/3 brands and part numbers
+  - Corrected detection for Intel "Lynnfield" CPU
+  - Added detection for Intel "Clarkdale" CPU
+  - Added detection for Intel "Gulftown" CPU
+  - Corrected detection for AMD 45nm K10 CPU
+  - Added detection for AMD "Magny-Cours" CPU
+  - Solved crash with AMD Geode LX
+  - Added detection for Intel XMP Memory
+  - Added for CPU w/ 0.5/1.5/3/6/12/16/18/24MB L3
+  - Added "clean" DMI detection for DDR3/FBDIMM2 
+  - Better detection of Integrated Memory Ctrl
+  - Complies with SMBIOS 2.6.1 specs
+  - Fixed compilation issues with gcc 4.2+
+  - Many others bug fixes

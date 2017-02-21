@@ -3,7 +3,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
- * MemTest86+ V2.11 Specific code (GPL V2.0)
+ * MemTest86+ V4.00 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.canardpc.com - http://www.memtest.org
  */
@@ -13,11 +13,14 @@
 #include "test.h"
 #include "pci.h"
 #include "controller.h"
+#include "spd.h"
+#include "test.h"
 
 int col, col2;
 int nhm_bus = 0x3F;
 	
 extern ulong extclock;
+extern unsigned long imc_type;
 extern struct cpu_ident cpu_id;
 
 #define rdmsr(msr,val1,val2) \
@@ -79,6 +82,7 @@ struct pci_memory_controller {
 	void (*setup_ecc)(void);
 	void (*poll_errors)(void);
 };
+
 
 void print_timings_info(float cas, int rcd, int rp, int ras) {
 
@@ -199,8 +203,8 @@ static void setup_nhm(void)
 		pci_conf_read( possible_nhm_bus[i], 3, 4, 0x00, 2, &vid);
 		pci_conf_read( possible_nhm_bus[i], 3, 4, 0x02, 2, &did);
 		vid &= 0xFFFF;
-		did &= 0xFFFF;
-		if(vid == 0x8086 && did == 0x2C1C) { 
+		did &= 0xFF00;
+		if(vid == 0x8086 && did == 0x2C00) { 
 			nhm_bus = possible_nhm_bus[i]; 
 			}
 }
@@ -282,6 +286,7 @@ static void setup_k10(void)
 	unsigned int mcgsth;
 	unsigned long mcanb;
 	unsigned long dramcl;
+	ulong msr_low, msr_high;
 
 	/* All AMD64 support Chipkill */
 	ctrl.cap = ECC_CHIPKILL;
@@ -302,7 +307,13 @@ static void setup_k10(void)
 	
 		/* Clear any previous error */
 		pci_conf_read(0, 24, 3, 0x4C, 4, &mcanb);
-		pci_conf_write(0, 24, 3, 0x4C, 4, mcanb & 0x7FFFFFFF );		
+		pci_conf_write(0, 24, 3, 0x4C, 4, mcanb & 0x7FFFFFFF );	
+		
+		/* Enable ECS */
+		rdmsr(0xC001001F, msr_low,  msr_high);
+		wrmsr(0xC001001F, msr_low, (msr_high | 0x4000));
+		rdmsr(0xC001001F, msr_low,  msr_high);
+
 }
 
 static void poll_amd64(void)
@@ -1258,6 +1269,29 @@ static void poll_fsb_k10(void) {
 	unsigned long dramchr;
 	unsigned long mainPllId;
 	double dramclock;
+	unsigned long pns_low;
+	unsigned long pns_high;
+	unsigned long  msr_psn;
+
+
+		/* If ECC not enabled : display CPU name as IMC */
+		if(ctrl.mode == ECC_NONE)
+			{
+				cprint(LINE_CPU+5, 0, "IMC : ");
+				for(msr_psn = 0; msr_psn < 5; msr_psn++)
+				{		
+					rdmsr(0xC0010030+msr_psn, pns_low,  pns_high);
+					cprint(LINE_CPU+5, 6+(msr_psn*8), convert_hex_to_char(pns_low & 0xff));
+					cprint(LINE_CPU+5, 7+(msr_psn*8), convert_hex_to_char((pns_low >> 8) & 0xff));
+					cprint(LINE_CPU+5, 8+(msr_psn*8), convert_hex_to_char((pns_low >> 16) & 0xff));
+					cprint(LINE_CPU+5, 9+(msr_psn*8), convert_hex_to_char((pns_low >> 24) & 0xff));
+					cprint(LINE_CPU+5, 10+(msr_psn*8), convert_hex_to_char(pns_high & 0xff));
+					cprint(LINE_CPU+5, 11+(msr_psn*8), convert_hex_to_char((pns_high >> 8) & 0xff));
+					cprint(LINE_CPU+5, 12+(msr_psn*8), convert_hex_to_char((pns_high >> 16) & 0xff));
+					cprint(LINE_CPU+5, 13+(msr_psn*8), convert_hex_to_char((pns_high >> 24) & 0xff));
+				}
+				cprint(LINE_CPU+5, 41, "(ECC : Disabled)");
+			}
 
 		/* First, we need the clock ratio */
 		pci_conf_read(0, 24, 2, 0x94, 4, &dramchr);
@@ -2020,15 +2054,15 @@ static void poll_fsb_nhm(void) {
 	fsb = ((extclock /1000) / coef);
 
 	/* Print FSB */
-	cprint(LINE_CPU+5, col +1, "/ FSB : ");
-	col += 9;
+	cprint(LINE_CPU+5, col +1, "/ BCLK : ");
+	col += 10;
 	dprint(LINE_CPU+5, col, fsb, 3,0);
 	col += 3;
 	cprint(LINE_CPU+5, col +1, "MHz");
 	col += 4;
 	
 	/* Print QPI Speed (if ECC not supported) */
-	if(ctrl.mode == ECC_NONE) {
+	if(ctrl.mode == ECC_NONE && cpu_id.model == 10) {
 		pci_conf_read(nhm_bus, 2, 1, 0x50, 2, &qpi_pll_status);
 		qpi_speed = (qpi_pll_status & 0x7F) * ((extclock / 1000) / coef) * 2;
 		cprint(LINE_CPU+5, col +1, "/ QPI : ");
@@ -2167,9 +2201,9 @@ static void poll_timings_i925(void) {
 
 	//Determine DDR or DDR-II
 	if ((drc & 3) == 2) {
-		cprint(LINE_CPU+5, col +1, "- Type : DDR-II");
+		cprint(LINE_CPU+5, col +1, "- Type : DDR2");
 	} else {
-		cprint(LINE_CPU+5, col +1, "- Type : DDR-I");
+		cprint(LINE_CPU+5, col +1, "- Type : DDR1");
 	}
 
 	// Now, detect timings
@@ -2682,11 +2716,11 @@ static void poll_timings_amd64(void) {
 			// Print 64 or 128 bits mode
 		
 			if ((dramclr >> 11)&1) {
-				cprint(LINE_CPU+6, col2, " DDR-2 (128 bits)");
-				col2 +=17;
-			} else {
-				cprint(LINE_CPU+6, col2, " DDR-2 (64 bits)");
+				cprint(LINE_CPU+6, col2, " DDR2 (128 bits)");
 				col2 +=16;
+			} else {
+				cprint(LINE_CPU+6, col2, " DDR2 (64 bits)");
+				col2 +=15;
 			}
 
 	} else {
@@ -2720,11 +2754,11 @@ static void poll_timings_amd64(void) {
 			// Print 64 or 128 bits mode
 		
 			if (((dramclr >> 16)&1) == 1) {
-				cprint(LINE_CPU+6, col2, " DDR-1 (128 bits)");
-				col2 +=17;
-			} else {
-				cprint(LINE_CPU+6, col2, " DDR-1 (64 bits)");
+				cprint(LINE_CPU+6, col2, " DDR1 (128 bits)");
 				col2 +=16;
+			} else {
+				cprint(LINE_CPU+6, col2, " DDR1 (64 bits)");
+				col2 +=15;
 			}
 	}
 }
@@ -2732,59 +2766,56 @@ static void poll_timings_amd64(void) {
 static void poll_timings_k10(void) {
 
 	ulong dramtlr, dramclr, dramchr;
-	int temp;
-	int trcd, trp, tras ;
-
-	cprint(LINE_CPU+6, col2 +1, "/ CAS : ");
-	col2 += 9;
+	ulong offset = 0;
+	int cas, rcd, rp, rc, ras;
 	
-	pci_conf_read(0, 24, 2, 0x88, 4, &dramtlr);
-	pci_conf_read(0, 24, 2, 0x110, 4, &dramclr);
 	pci_conf_read(0, 24, 2, 0x94, 4, &dramchr);
+	
+	// If Channel A not enabled, switch to channel B
+	if(((dramchr>>14) & 0x1))
+	{
+		offset = 0x100;
+		pci_conf_read(0, 24, 2, 0x94+offset, 4, &dramchr);	
+	}
 
+	pci_conf_read(0, 24, 2, 0x88+offset, 4, &dramtlr);
+	pci_conf_read(0, 24, 2, 0x110, 4, &dramclr);
+	
 	// CAS Latency (tCAS)
-	temp = (dramtlr & 0x7) + 1;
-	dprint(LINE_CPU+6, col2, temp , 1 ,0);
-	cprint(LINE_CPU+6, col2 +1, "-"); col2 +=2;
-	
-	// RAS-To-CAS (tRCD)
-	trcd = ((dramtlr >> 4) & 0x3) + 3;
-	dprint(LINE_CPU+6, col2, trcd , 1 ,0);
-	cprint(LINE_CPU+6, col2 +1, "-"); col2 +=2;
-	
-	// RAS Precharge (tRP)
-	trp = ((dramtlr >> 8) & 0x3) + 3;
-	dprint(LINE_CPU+6, col2, trp , 1 ,0);
-	cprint(LINE_CPU+6, col2 +1, "-"); col2 +=2;
+	if(((dramchr >> 8)&1) || ((dramchr & 0x7) == 0x4)){
+		// DDR3 or DDR2-1066
+		cas = (dramtlr & 0xF) + 4;
+		rcd = ((dramtlr >> 4) & 0x7) + 5;
+		rp = ((dramtlr >> 7) & 0x7) + 5;
+	  ras = ((dramtlr >> 12) & 0xF) + 15;
+		rc = ((dramtlr >> 16) & 0x1F) + 11;		
+	} else {
+	// DDR2-800 or less
+		cas = (dramtlr & 0xF) + 1;
+		rcd = ((dramtlr >> 4) & 0x3) + 3;
+		rp = ((dramtlr >> 8) & 0x3) + 3;
+	  ras = ((dramtlr >> 12) & 0xF) + 3;
+		rc = ((dramtlr >> 16) & 0x1F) + 11;
+	}
 
-	// RAS Active to precharge (tRAS)
-	tras = ((dramtlr >> 12) & 0xF) + 3;
-	dprint(LINE_CPU+6, col2, tras, 1 ,0);
-	(tras < 10)?(col2 += 1):(col2 += 2);
-	cprint(LINE_CPU+6, col2, "-");
-	col2 += 1;
-
-	// Row Cycle Time (tRC)
-	trp = ((dramtlr >> 16) & 0x1F) + 11;
-	dprint(LINE_CPU+6, col2, trp , 1 ,0);
-	col2 +=2;	
+	print_timings_info(cas, rcd, rp, ras);
 	
-	cprint(LINE_CPU+6, col2+1, "/"); col2 +=2;
+	cprint(LINE_CPU+6, col2, "/"); col2++;
 	
 	//Print DDR2 or DDR3
 	if ((dramchr >> 8)&1) {
-		cprint(LINE_CPU+6, col2+1, "DDR-3");
+		cprint(LINE_CPU+6, col2+1, "DDR3");
 	} else {
-		cprint(LINE_CPU+6, col2+1, "DDR-2");
+		cprint(LINE_CPU+6, col2+1, "DDR2");
 	}
-	col2 += 6;
+	col2 += 5;
 	
 	// Print 64 or 128 bits mode
-	if ((dramclr >> 4)&1) {
-		cprint(LINE_CPU+6, col2+1, "(Dual)");
-	} else {
-		cprint(LINE_CPU+6, col2+1, "(Single)");
-	}
+		if ((dramclr >> 4)&1) {
+			cprint(LINE_CPU+6, col2+1, "(128 bits)");
+		} else {
+			cprint(LINE_CPU+6, col2+1, "(64 bits)");
+		}
 	
 }
 
@@ -2948,8 +2979,6 @@ static struct pci_memory_controller controllers[] = {
 	{ 0x1022, 0x7006, "AMD 751",   0, poll_fsb_nothing, poll_timings_nothing, setup_amd751, poll_amd751 },
 	{ 0x1022, 0x700c, "AMD 762",   0, poll_fsb_nothing, poll_timings_nothing, setup_amd76x, poll_amd76x },
 	{ 0x1022, 0x700e, "AMD 761",   0, poll_fsb_nothing, poll_timings_nothing, setup_amd76x, poll_amd76x },
-	{ 0x1022, 0x0000, "AMD K8",		 0, poll_fsb_amd64, poll_timings_amd64, setup_amd64, poll_amd64 },
-	{ 0x1022, 0x0000, "AMD K10",	 0, poll_fsb_k10, poll_timings_k10, setup_k10, poll_nothing },
 
 	/* SiS */
 	{ 0x1039, 0x0600, "SiS 600",   0, poll_fsb_nothing, poll_timings_nothing, setup_nothing, poll_nothing },
@@ -3081,12 +3110,13 @@ static struct pci_memory_controller controllers[] = {
 	{ 0x8086, 0x5020, "Intel EP80579",    	0, poll_fsb_p4, 	poll_timings_EP80579, setup_nothing, poll_nothing },
 	{ 0x8086, 0x8100, "Intel US15W",				0, poll_fsb_us15w, poll_timings_us15w, setup_nothing, poll_nothing},
 	{ 0x8086, 0x8101, "Intel UL11L/US15L", 	0, poll_fsb_us15w, poll_timings_us15w, setup_nothing, poll_nothing},
-	{ 0x8086, 0x3400, "NHM IMC", 	 					0, poll_fsb_nhm, 	poll_timings_nhm, setup_nhm, poll_nothing},
-	{ 0x8086, 0x3401, "NHM IMC", 	 					0, poll_fsb_nhm, 	poll_timings_nhm, setup_nhm, poll_nothing},
-	{ 0x8086, 0x3402, "NHM IMC", 	 					0, poll_fsb_nhm, 	poll_timings_nhm, setup_nhm, poll_nothing},
-	{ 0x8086, 0x3403, "NHM IMC", 	 					0, poll_fsb_nhm, 	poll_timings_nhm, setup_nhm, poll_nothing},
-	{ 0x8086, 0x3404, "NHM IMC", 	 					0, poll_fsb_nhm, 	poll_timings_nhm, setup_nhm, poll_nothing},
-	{ 0x8086, 0x3405, "NHM IMC", 	 					0, poll_fsb_nhm, 	poll_timings_nhm, setup_nhm, poll_nothing}
+
+	/* Integrated Memory Controllers */
+	{ 0xFFFF, 0x0001, "Core IMC", 	 				0, poll_fsb_nhm, 	poll_timings_nhm, setup_nhm, poll_nothing},
+	{ 0xFFFF, 0x0002, "Core IMC2", 	 				0, poll_fsb_nhm, 	poll_timings_nothing, setup_nhm, poll_nothing},
+	{ 0xFFFF, 0x0100, "AMD K8 IMC",					0, poll_fsb_amd64, poll_timings_amd64, setup_amd64, poll_amd64 },
+	{ 0xFFFF, 0x0101, "AMD K10 IMC",			  0, poll_fsb_k10, poll_timings_k10, setup_k10, poll_nothing }
+	
 };	
 
 static void print_memory_controller(void)
@@ -3155,7 +3185,6 @@ static void print_memory_controller(void)
 		col += 9;
 	}
 
-
 	/* Print advanced caracteristics  */
 	col2 = 0;
 	d = get_key();
@@ -3176,6 +3205,10 @@ void find_controller(void)
 	int result;
 	result = pci_conf_read(ctrl.bus, ctrl.dev, ctrl.fn, PCI_VENDOR_ID, 2, &vendor);
 	result = pci_conf_read(ctrl.bus, ctrl.dev, ctrl.fn, PCI_DEVICE_ID, 2, &device);
+	
+	// Detect IMC by CPUID
+	if(imc_type) { vendor = 0xFFFF; device = imc_type; }
+	
 	ctrl.index = 0;	
 		if (result == 0) {
 			for(i = 1; i < sizeof(controllers)/sizeof(controllers[0]); i++) {
@@ -3185,12 +3218,6 @@ void find_controller(void)
 				}
 			}
 		}
-		
-	// AMD K8 use integrated mem controller, force detection
-	if (cpu_id.type == 15 && cpu_id.vend_id[0] == 'A') { ctrl.index = 4; }
-		
-	// Same thing for K10. Detect by cpu_id.model = 2, will change it to ext.cpuid > 10 later
-	if (cpu_id.type == 15 && cpu_id.vend_id[0] == 'A' && cpu_id.model == 2) { ctrl.index = 5; }
 	
 	controllers[ctrl.index].setup_ecc();
 	/* Don't enable ECC polling by default unless it has

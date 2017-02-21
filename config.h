@@ -27,6 +27,9 @@
 /* BEEP_END_NO_ERROR - Beep at end of each pass without error. Default off, Change to 1 to enable */
 #define BEEP_END_NO_ERROR 0
 
+/* FIRST_PASS_HALF_ITERATIONS - First pass twice faster / half iterations. Change to 0 to disable */
+#define FIRST_PASS_HALF_ITERATIONS 1
+
 /* SCRN_DEBUG - extra check for SCREEN_BUFFER
  */ 
 /* #define SCRN_DEBUG */

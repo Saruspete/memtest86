@@ -3,7 +3,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
- * MemTest86+ V2.11 Specific code (GPL V2.0)
+ * MemTest86+ V4.00 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.canardpc.com - http://www.memtest.org
  */
@@ -14,6 +14,7 @@
 #include "controller.h"
 #include "pci.h"
 #include "io.h"
+#include "spd.h"
 
 #define rdmsr(msr,val1,val2) \
 	__asm__ __volatile__("rdmsr" \
@@ -31,6 +32,7 @@ ulong st_low, st_high;
 ulong end_low, end_high;
 ulong cal_low, cal_high;
 ulong extclock;
+unsigned long imc_type = 0;
 
 int l1_cache, l2_cache, l3_cache;
 int tsc_invariable = 0;
@@ -63,7 +65,7 @@ static void display_init(void)
 	for(i=0, pp=(char *)(SCREEN_ADR+1); i<TITLE_WIDTH; i++, pp+=2) {
 		*pp = 0x20;
 	}
-	cprint(0, 0, "      Memtest86  v2.11      ");
+	cprint(0, 0, "      Memtest86  v4.00      ");
 
 	for(i=0, pp=(char *)(SCREEN_ADR+1); i<2; i++, pp+=30) {
 		*pp = 0xA4;
@@ -133,7 +135,7 @@ void init(void)
 	v->erri.ebits = 0;
 	v->erri.hdr_flag = 0;
 	v->erri.tbits = 0;
-	for (i=0; tseq[i].msg != NULL; i++) {
+	for (i=0; tseq[i].msg != 0; i++) {
 		tseq[i].errors = 0;
 	}
 	if (dmi_initialized) {
@@ -153,8 +155,11 @@ void init(void)
 
 	cpu_type();
 
-	/* Find the memory controller (inverted from standard) */
+	/* Find the memory controller */
 	find_controller();
+
+	/* Find Memory Specs */
+	get_spd_spec();	
 
 	if (v->rdtsc) {
 		cacheable();
@@ -181,7 +186,6 @@ void init(void)
 	// v->printmode=PRINTMODE_SUMMARY;
 	v->printmode=PRINTMODE_ADDRESSES;
 	v->numpatn=0;
-	find_ticks();
 
 }
 
@@ -443,6 +447,14 @@ void cpu_type(void)
 				l2_cache = (cpu_id.cache_info[11] << 8);
 				l2_cache += cpu_id.cache_info[10];
 				break;
+			case 10:
+				cprint(LINE_CPU, 0, "AMD Geode LX");
+				off = 12;
+				l1_cache = cpu_id.cache_info[3];
+				l1_cache += cpu_id.cache_info[7];
+				l2_cache = (cpu_id.cache_info[11] << 8);
+				l2_cache += cpu_id.cache_info[10];
+				break;
 			case 13:
 				cprint(LINE_CPU, 0, "AMD K6-III+");
 				off = 11;
@@ -511,59 +523,77 @@ void cpu_type(void)
 			l1_cache = cpu_id.cache_info[3];
 			l2_cache = (cpu_id.cache_info[11] << 8);
 			l2_cache += cpu_id.cache_info[10];
-			switch(cpu_id.model) {
-			default:
-				cprint(LINE_CPU, 0, "AMD K8");
-				off = 6;
-				break;
-			case 1:
-			case 5:
-				if (((cpu_id.ext >> 16) & 0xF) != 0) {
-					cprint(LINE_CPU, 0, "AMD Opteron (0.09)");				
-				} else {
-					cprint(LINE_CPU, 0, "AMD Opteron (0.13)");
-				}
-				off = 18;
-				break;
-			case 3:
-			case 11:
-				cprint(LINE_CPU, 0, "Athlon 64 X2");
-				off = 12;				
-				break;
-			case 8:
-				cprint(LINE_CPU, 0, "Turion 64 X2");
-				off = 12;						
-				break;
-			case 4:
-			case 7:
-			case 9:
-			case 12:
-			case 14:
-			case 15:
-				if (((cpu_id.ext >> 16) & 0xF) != 0) {
-					if (l2_cache > 256) {
-						cprint(LINE_CPU, 0, "Athlon 64 (0.09)");
+			imc_type = 0x0100;
+			if(((cpu_id.ext >> 16) & 0xFF) < 0x10) {
+			// Here if CPUID.EXT < 0x10h	(old K8/K10)
+				switch(cpu_id.model) {
+				default:
+					cprint(LINE_CPU, 0, "AMD K8");
+					off = 6;
+					break;
+				case 1:
+				case 5:
+					if (((cpu_id.ext >> 16) & 0xF) != 0) {
+						cprint(LINE_CPU, 0, "AMD Opteron (0.09)");				
 					} else {
-						cprint(LINE_CPU, 0, "Sempron (0.09)");						
+						cprint(LINE_CPU, 0, "AMD Opteron (0.13)");
 					}
-				} else {
-					if (l2_cache > 256) {
-						cprint(LINE_CPU, 0, "Athlon 64 (0.13)");
+					off = 18;
+					break;
+				case 3:
+				case 11:
+					cprint(LINE_CPU, 0, "Athlon 64 X2");
+					off = 12;				
+					break;			
+				case 8:
+					cprint(LINE_CPU, 0, "Turion 64 X2");
+					off = 12;						
+					break;
+				case 4:
+				case 7:
+				case 12:
+				case 14:
+				case 15:
+					if (((cpu_id.ext >> 16) & 0xF) != 0) {
+						if (l2_cache > 256) {
+							cprint(LINE_CPU, 0, "Athlon 64 (0.09)");
+						} else {
+							cprint(LINE_CPU, 0, "Sempron (0.09)");						
+						}
 					} else {
-						cprint(LINE_CPU, 0, "Sempron (0.13)");						
-					}		
+						if (l2_cache > 256) {
+							cprint(LINE_CPU, 0, "Athlon 64 (0.13)");
+						} else {
+							cprint(LINE_CPU, 0, "Sempron (0.13)");						
+						}		
+					}
+					off = 16;
+					break;			
 				}
-				off = 16;
 				break;
-			case 2:
+			} else {
+			 // Here if CPUID.EXT >= 0x10h	(new K10)
 				l3_cache = (cpu_id.cache_info[15] << 8);
 				l3_cache += (cpu_id.cache_info[14] >> 2);
 				l3_cache *= 512;
-				cprint(LINE_CPU, 0, "AMD K10 CPU @");
-				off = 13;				
-				break;				
+				imc_type = 0x0101;
+				switch(cpu_id.model) {
+				default:			 
+				case 2:
+					cprint(LINE_CPU, 0, "AMD K10 (65nm) @");
+					off = 16;				
+					break;	
+				case 4:
+					cprint(LINE_CPU, 0, "AMD K10 (45nm) @");
+					off = 16;				
+					break;				
+				case 9:
+					cprint(LINE_CPU, 0, "AMD Magny-Cours");
+					off = 15;				
+					break;			
+				}
+				break;		  
 			}
-			break;
 		}
 		break;
 
@@ -697,25 +727,54 @@ void cpu_type(void)
 				case 0x4e:
 					l2_cache = 6144;
 					break;
+				case 0x22:
+				case 0xd0:
+					l3_cache = 512;
+				case 0x23:
 				case 0xd1:
 				case 0xd6:
 					l3_cache = 1024;
 					break;
+				case 0xdc:
+					l3_cache = 1536;
+					break;
+				case 0x25:
 				case 0xd2:
 				case 0xd7:
-				case 0xdc:
 				case 0xe2:
 					l3_cache = 2048;
 					break;
-				case 0xd8:
 				case 0xdd:
+					l3_cache = 3072;
+					break;				
+				case 0x29:
+				case 0x46:
+				case 0xd8:
 				case 0xe3:
 					l3_cache = 4096;
 					break;
+				case 0x4a:
 				case 0xde:
+					l3_cache = 6144;
+					break;
+				case 0x47:
+				case 0x4b:
 				case 0xe4:
 					l3_cache = 8192;
 					break;				
+				case 0x4c:
+				case 0xea:
+					l3_cache = 12288;
+					break;	
+				case 0x4d:
+					l3_cache = 16374;
+					break;						
+				case 0xeb:
+					l3_cache = 18432;
+					break;
+				case 0xec:
+					l3_cache = 24576;
+					break;		
 				}
 			}
 
@@ -755,10 +814,17 @@ void cpu_type(void)
 					off = 10;
 					break;
 				case 5:
-				if (((cpu_id.ext >> 16) & 0xF) != 0) {
-					cprint(LINE_CPU, 0, "Intel EP80579");
-					if (l2_cache == 0) { l2_cache = 256; }
-					off = 13;
+				if ((cpu_id.ext >> 16) & 0xF) {
+					if(((cpu_id.ext >> 16) & 0xF) > 1) {
+						cprint(LINE_CPU, 0, "Intel Core i3/i5");
+						tsc_invariable = 1;
+						imc_type = 0x0002;
+						off = 16;
+					} else {
+						cprint(LINE_CPU, 0, "Intel EP80579");
+						if (l2_cache == 0) { l2_cache = 256; }
+						off = 13;						
+					}
 				} else {
 					if (l2_cache == 0) {
 						cprint(LINE_CPU, 0, "Celeron");
@@ -811,6 +877,7 @@ void cpu_type(void)
 				case 10:
 					if (((cpu_id.ext >> 16) & 0xF) != 0) {
 						  tsc_invariable = 1;
+						  imc_type = 0x0001;
 							cprint(LINE_CPU, 0, "Intel Core i7");
 							off = 13;
 						} else {
@@ -819,9 +886,16 @@ void cpu_type(void)
 						}					
 					break;
 				case 12:
-					l1_cache = 24;
-					cprint(LINE_CPU, 0, "Atom (0.045)");
-					off = 12;
+					if (((cpu_id.ext >> 16) & 0xF) > 1) {					
+						cprint(LINE_CPU, 0, "Intel Core i9");
+						tsc_invariable = 1;
+						imc_type = 0x0002;
+						off = 13;
+					} else {
+						l1_cache = 24;
+						cprint(LINE_CPU, 0, "Atom (0.045)");
+						off = 12;						
+					}
 					break;					
 				case 13:
 					if (l2_cache == 1024) {
@@ -834,8 +908,9 @@ void cpu_type(void)
 				case 14:
 					if (((cpu_id.ext >> 16) & 0xF) != 0) {
 						tsc_invariable = 1;
-						cprint(LINE_CPU, 0, "Intel Core i5");
-						off = 13;
+						imc_type = 0x0001;
+						cprint(LINE_CPU, 0, "Intel Core i5/i7");
+						off = 16;
 					} else {
 						cprint(LINE_CPU, 0, "Intel Core");
 						off = 10;

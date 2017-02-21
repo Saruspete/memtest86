@@ -4,7 +4,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
- * MemTest86+ V2.01 Specific code (GPL V2.0)
+ * MemTest86+ V3.00 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.canardpc.com - http://www.memtest.org
  */
@@ -13,6 +13,7 @@
 #include "config.h"
 #include <sys/io.h>
 #include "dmi.h"
+#include <inttypes.h>
 
 extern int segs, bail;
 extern volatile ulong *p;
@@ -50,19 +51,19 @@ void addr_tst1()
 		/* Now write pattern compliment */
 		p1 = ~p1;
 		end = v->map[segs-1].end;
-		for (i=0; i<1000; i++) {
+		for (i=0; i<100; i++) {
 			mask = 4;
 			do {
 				pt = (ulong *)((ulong)p | mask);
-				if (pt == p) {
+				if ((uintptr_t)pt == (uintptr_t)p) {
 					mask = mask << 1;
 					continue;
 				}
-				if (pt >= end) {
+				if ((uintptr_t)pt >= (uintptr_t)end) {
 					break;
 				}
 				*pt = p1;
-				if ((bad = *p) != ~p1) {
+				if ((uintptr_t)(bad = *p) != (uintptr_t)~p1) {
 					ad_err1((ulong *)p, (ulong *)mask,
 					        bad, ~p1);
 					i = 1000;
@@ -90,7 +91,7 @@ void addr_tst1()
 			/* Force start address to be a multiple of 256k */
 			p = (ulong *)roundup((ulong)p, bank - 1);
 			end = v->map[j].end;
-			while (p < end) {
+			while ((uintptr_t)p < (uintptr_t)end) {
 				*p = p1;
 
 				p1 = ~p1;
@@ -99,15 +100,15 @@ void addr_tst1()
 					do {
 						pt = (ulong *)
 						    ((ulong)p | mask);
-						if (pt == p) {
+						if ((uintptr_t)pt == (uintptr_t)p) {
 							mask = mask << 1;
 							continue;
 						}
-						if (pt >= end) {
+						if ((uintptr_t)pt >= (uintptr_t)end) {
 							break;
 						}
 						*pt = p1;
-						if ((bad = *p) != ~p1) {
+						if ((uintptr_t)(bad = *p) != (uintptr_t)~p1) {
 							ad_err1((ulong *)p,
 							        (ulong *)mask,
 							        bad,~p1);
@@ -116,7 +117,7 @@ void addr_tst1()
 						mask = mask << 1;
 					} while(mask);
 				}
-				if (p + bank/4 > p) {
+				if ((uintptr_t)(p + bank/4) > (uintptr_t)p) {
 					p += bank/4;
 				} else {
 					p = end;
@@ -150,16 +151,16 @@ void addr_tst2()
 		done = 0;
 		do {
 			/* Check for overflow */
-			if (pe + SPINSZ > pe) {
+			if ((uintptr_t)(pe + SPINSZ) > (uintptr_t)pe) {
 				pe += SPINSZ;
 			} else {
 				pe = end;
 			}
-			if (pe >= end) {
+			if ((uintptr_t)pe >= (uintptr_t)end) {
 				pe = end;
 				done++;
 			}
-			if (p == pe ) {
+			if ((uintptr_t)p == (uintptr_t)pe) {
 				break;
 			}
 
@@ -194,16 +195,16 @@ void addr_tst2()
 		done = 0;
 		do {
 			/* Check for overflow */
-			if (pe + SPINSZ > pe) {
+			if ((uintptr_t)(pe + SPINSZ) > (uintptr_t)pe) {
 				pe += SPINSZ;
 			} else {
 				pe = end;
 			}
-			if (pe >= end) {
+			if ((uintptr_t)pe >= (uintptr_t)end) {
 				pe = end;
 				done++;
 			}
-			if (p == pe ) {
+			if ((uintptr_t)p == (uintptr_t)pe ) {
 				break;
 			}
 /* Original C code replaced with hand tuned assembly code
@@ -260,6 +261,7 @@ void movinvr()
 	volatile ulong *pe;
 	volatile ulong *start,*end;
 	ulong num;
+	uintptr_t seg_start;
 
 	/* Initialize memory with initial sequence of random numbers.  */
 	if (v->rdtsc) {
@@ -277,19 +279,20 @@ void movinvr()
 		end = v->map[j].end;
 		pe = start;
 		p = start;
+		seg_start = (uintptr_t)p;
 		done = 0;
 		do {
 			/* Check for overflow */
-			if (pe + SPINSZ > pe) {
+			if ((uintptr_t)(pe + SPINSZ) > (uintptr_t)pe) {
 				pe += SPINSZ;
 			} else {
 				pe = end;
 			}
-			if (pe >= end) {
+			if ((uintptr_t)pe >= (uintptr_t)end) {
 				pe = end;
 				done++;
 			}
-			if (p == pe ) {
+			if (seg_start == (uintptr_t)pe) {
 				break;
 			}
 /* Original C code replaced with hand tuned assembly code */
@@ -310,7 +313,7 @@ void movinvr()
 				"jb L200\n\t"
 				: "=D" (p)
 				: "D" (p), "b" (pe)
-				: "eax"
+				: "eax", "edx"
 			);
 
 			do_tick();
@@ -328,19 +331,20 @@ void movinvr()
 			end = v->map[j].end;
 			pe = start;
 			p = start;
+			seg_start = (uintptr_t)p;
 			done = 0;
 			do {
 				/* Check for overflow */
-				if (pe + SPINSZ > pe) {
+				if ((uintptr_t)(pe + SPINSZ) > (uintptr_t)pe) {
 					pe += SPINSZ;
 				} else {
 					pe = end;
 				}
-				if (pe >= end) {
+				if ((uintptr_t)pe >= (uintptr_t)end) {
 					pe = end;
 					done++;
 				}
-				if (p == pe ) {
+				if (seg_start == (uintptr_t)pe) {
 					break;
 				}
 /* Original C code replaced with hand tuned assembly code */
@@ -427,17 +431,17 @@ void movinv1(int iter, ulong p1, ulong p2)
 		done = 0;
 		do {
 			/* Check for overflow */
-			if (pe + SPINSZ > pe) {
+			if ((uintptr_t)(pe + SPINSZ) > (uintptr_t)pe) {
 				pe += SPINSZ;
 			} else {
 				pe = end;
 			}
-			if (pe >= end) {
+			if ((uintptr_t)pe >= (uintptr_t)end) {
 				pe = end;
 				done++;
 			}
 			len = pe - p;
-			if (p == pe ) {
+			if ((uintptr_t)p == (uintptr_t)pe) {
 				break;
 			}
 /* Original C code replaced with hand tuned assembly code
@@ -468,16 +472,16 @@ void movinv1(int iter, ulong p1, ulong p2)
 			done = 0;
 			do {
 				/* Check for overflow */
-				if (pe + SPINSZ > pe) {
+				if ((uintptr_t)(pe + SPINSZ) > (uintptr_t)pe) {
 					pe += SPINSZ;
 				} else {
 					pe = end;
 				}
-				if (pe >= end) {
+				if ((uintptr_t)pe >= (uintptr_t)end) {
 					pe = end;
 					done++;
 				}
-				if (p == pe ) {
+				if ((uintptr_t)p == (uintptr_t)pe) {
 					break;
 				}
 /* Original C code replaced with hand tuned assembly code
@@ -534,16 +538,16 @@ void movinv1(int iter, ulong p1, ulong p2)
 			done = 0;
 			do {
 				/* Check for underflow */
-				if (pe - SPINSZ < pe) {
+				if ((uintptr_t)(pe - SPINSZ) < (uintptr_t)pe) {
 					pe -= SPINSZ;
 				} else {
 					pe = start;
 				}
-				if (pe <= start) {
+				if ((uintptr_t)pe <= (uintptr_t)start) {
 					pe = start;
 					done++;
 				}
-				if (p == pe ) {
+				if ((uintptr_t)p == (uintptr_t)pe) {
 					break;
 				}
 /* Original C code replaced with hand tuned assembly code
@@ -623,16 +627,16 @@ void movinv32(int iter, ulong p1, ulong lb, ulong hb, int sval, int off)
 		pat = p1;
 		do {
 			/* Check for overflow */
-			if (pe + SPINSZ > pe) {
+			if ((uintptr_t)(pe + SPINSZ) > (uintptr_t)pe) {
 				pe += SPINSZ;
 			} else {
 				pe = end;
 			}
-			if (pe >= end) {
+			if ((uintptr_t)pe >= (uintptr_t)end) {
 				pe = end;
 				done++;
 			}
-			if (p == pe ) {
+			if ((uintptr_t)p == (uintptr_t)pe) {
 				break;
 			}
 			/* Do a SPINSZ section of memory */
@@ -685,16 +689,16 @@ void movinv32(int iter, ulong p1, ulong lb, ulong hb, int sval, int off)
 			pat = p1;
 			do {
 				/* Check for overflow */
-				if (pe + SPINSZ > pe) {
+				if ((uintptr_t)(pe + SPINSZ) > (uintptr_t)pe) {
 					pe += SPINSZ;
 				} else {
 					pe = end;
 				}
-				if (pe >= end) {
+				if ((uintptr_t)pe >= (uintptr_t)end) {
 					pe = end;
 					done++;
 				}
-				if (p == pe ) {
+				if ((uintptr_t)p == (uintptr_t)pe) {
 					break;
 				}
 /* Original C code replaced with hand tuned assembly code
@@ -798,16 +802,16 @@ void movinv32(int iter, ulong p1, ulong lb, ulong hb, int sval, int off)
 			done = 0;
 			do {
 				/* Check for underflow */
-				if (pe - SPINSZ < pe) {
+				if ((uintptr_t)(pe - SPINSZ) < (uintptr_t)pe) {
 					pe -= SPINSZ;
 				} else {
 					pe = start;
 				}
-				if (pe <= start) {
+				if ((uintptr_t)pe <= (uintptr_t)start) {
 					pe = start;
 					done++;
 				}
-				if (p == pe ) {
+				if ((uintptr_t)p == (uintptr_t)pe) {
 					break;
 				}
 /* Original C code replaced with hand tuned assembly code
@@ -906,16 +910,16 @@ void modtst(int offset, int iter, ulong p1, ulong p2)
 		done = 0;
 		do {
 			/* Check for overflow */
-			if (pe + SPINSZ > pe) {
+			if ((uintptr_t)(pe + SPINSZ) > (uintptr_t)pe) {
 				pe += SPINSZ;
 			} else {
 				pe = end;
 			}
-			if (pe >= end) {
+			if ((uintptr_t)pe >= (uintptr_t)end) {
 				pe = end;
 				done++;
 			}
-			if (p == pe ) {
+			if ((uintptr_t)p == (uintptr_t)pe) {
 				break;
 			}
 /* Original C code replaced with hand tuned assembly code
@@ -951,16 +955,16 @@ void modtst(int offset, int iter, ulong p1, ulong p2)
 			k = 0;
 			do {
 				/* Check for overflow */
-				if (pe + SPINSZ > pe) {
+				if ((uintptr_t)(pe + SPINSZ) > (uintptr_t)pe) {
 					pe += SPINSZ;
 				} else {
 					pe = end;
 				}
-				if (pe >= end) {
+				if ((uintptr_t)pe >= (uintptr_t)end) {
 					pe = end;
 					done++;
 				}
-				if (p == pe ) {
+				if ((uintptr_t)p == (uintptr_t)pe) {
 					break;
 				}
 /* Original C code replaced with hand tuned assembly code
@@ -1009,16 +1013,17 @@ void modtst(int offset, int iter, ulong p1, ulong p2)
 		done = 0;
 		do {
 			/* Check for overflow */
-			if (pe + SPINSZ > pe) {
+			if ((uintptr_t)(pe + SPINSZ) > (uintptr_t)pe) {
 				pe += SPINSZ;
 			} else {
 				pe = end;
 			}
-			if (pe >= end) {
+			if ((uintptr_t)pe >= (uintptr_t)end) {
+
 				pe = end;
 				done++;
 			}
-			if (p == pe ) {
+			if ((uintptr_t)p == (uintptr_t)pe) {
 				break;
 			}
 /* Original C code replaced with hand tuned assembly code
@@ -1098,16 +1103,18 @@ void block_move(int iter)
 		done = 0;
 		do {
 			/* Check for overflow */
-			if (pe + SPINSZ*4 > pe) {
+			if ((uintptr_t)(pe + SPINSZ*4) > (uintptr_t)pe) {
 				pe += SPINSZ*4;
 			} else {
 				pe = end;
 			}
-			if (pe >= end) {
+			if ((uintptr_t)pe >= (uintptr_t)end) {
+
 				pe = end;
 				done++;
 			}
-			if (p == pe ) {
+			if ((uintptr_t)p == (uintptr_t)pe) {
+
 				break;
 			}
 			len  = ((ulong)pe - (ulong)p) / 64;
@@ -1167,16 +1174,16 @@ void block_move(int iter)
 		done = 0;
 		do {
 			/* Check for overflow */
-			if (pe + SPINSZ*4 > pe) {
+			if ((uintptr_t)(pe + SPINSZ*4) > (uintptr_t)pe) {
 				pe += SPINSZ*4;
 			} else {
 				pe = end;
 			}
-			if (pe >= end) {
+			if ((uintptr_t)pe >= (uintptr_t)end) {
 				pe = end;
 				done++;
 			}
-			if (p == pe ) {
+			if ((uintptr_t)p == (uintptr_t)pe) {
 				break;
 			}
 			pp = p + ((pe - p) / 2);
@@ -1234,16 +1241,16 @@ void block_move(int iter)
 		done = 0;
 		do {
 			/* Check for overflow */
-			if (pe + SPINSZ*4 > pe) {
+			if ((uintptr_t)(pe + SPINSZ*4) > (uintptr_t)pe) {
 				pe += SPINSZ*4;
 			} else {
 				pe = end;
 			}
-			if (pe >= end) {
+			if ((uintptr_t)pe >= (uintptr_t)end) {
 				pe = end;
 				done++;
 			}
-			if (p == pe ) {
+			if ((uintptr_t)p == (uintptr_t)pe) {
 				break;
 			}
 			asm __volatile__ (

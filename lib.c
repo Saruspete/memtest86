@@ -3,7 +3,7 @@
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady, cbrady@sgi.com
  * ----------------------------------------------------
- * MemTest86+ V2.00 Specific code (GPL V2.0)
+ * MemTest86+ V4.00 Specific code (GPL V2.0)
  * By Samuel DEMEULEMEESTER, memtest@memtest.org
  * http://www.canardplus.com - http://www.memtest.org
 */
@@ -13,7 +13,9 @@
 #include "test.h"
 #include "config.h"
 #include "screen_buffer.h"
+#include "smp.h"
 
+#define NULL 0
 
 int slock = 0, lsr = 0;
 short serial_cons = SERIAL_CONSOLE_DEFAULT;
@@ -62,6 +64,8 @@ char *codes[] = {
 };
 
 struct eregs {
+	ulong ss;
+	ulong ds;
 	ulong esp;
 	ulong ebp;
 	ulong esi;
@@ -89,6 +93,19 @@ int memcmp(const void *s1, const void *s2, ulong count)
 	return 0;
 }
 
+void memcpy (void *dst, void *src, int len)
+{
+	char *s = (char*)src;
+	char *d = (char*)dst;
+	int i;
+
+	if (len <= 0) {
+		return;
+	}
+	for (i = 0 ; i < len; i++) {
+		*d++ = *s++;
+	} 
+}
 int strncmp(const char *s1, const char *s2, ulong n) {
 	signed char res = 0;
 	while (n) {
@@ -344,6 +361,25 @@ void dprint(int y, int x, ulong val, int len, int right)
 	cprint(y,x,buf);
 }
 
+
+/*
+ * Get_number of digits
+ */
+int getnum(ulong val)
+{
+	int len = 0;
+	int i = 1;
+	
+	while(i <= val)
+	{
+		len++;
+		i *= 10;
+	}
+
+	return len;
+		
+}
+
 /*
  * Print a hex number on screen at least digits long
  */
@@ -495,7 +531,10 @@ void inter(struct eregs *trap_regs)
 	hprint(line+8, 25, trap_regs->ebp);
 	cprint(line+9, 20, "esp: ");
 	hprint(line+9, 25, trap_regs->esp);
-
+	cprint(line+7, 0, "   DS: ");
+	hprint(line+7, 7, trap_regs->ds);
+	cprint(line+8, 0, "   SS: ");
+	hprint(line+8, 7, trap_regs->ss);
 	cprint(line+1, 38, "Stack:");
 	for (i=0; i<12; i++) {
 		hprint(line+2+i, 38, trap_regs->esp+(4*i));
@@ -1133,5 +1172,6 @@ put_lp(char c, short port)
 	outb((LP_PSELECP | LP_PINITP), CONTROL(port));
 	lp_wait(DELAY);
 }
+
 #endif
 

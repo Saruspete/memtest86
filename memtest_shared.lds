@@ -18,6 +18,7 @@ SECTIONS {
 	.dynsym     : { *(.dynsym) }
 	.dynstr     : { *(.dynstr) }
 	.hash       : { *(.hash) }
+	.gnu.hash   : { *(.gnu.hash) }
 	.dynamic    : { *(.dynamic) }
 
 	.rel.text    : { *(.rel.text   .rel.text.*) }

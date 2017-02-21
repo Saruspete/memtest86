@@ -2,13 +2,22 @@
  * added by Reto Sonderegger, 2004, reto@swissbit.com
  * 
  * Released under version 2 of the Gnu Puclic License
+ * ----------------------------------------------------
+ * MemTest86+ V4.00 Specific code (GPL V2.0)
+ * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
+ * http://www.canardpc.com - http://www.memtest.org
  */
+
  
 #include "test.h"
 #include "io.h"
 #include "pci.h"
 #include "msr.h"
+#include "spd.h"
 #include "screen_buffer.h"
+#include "jedec_id.h"
+
+#define NULL 0
 
 #define SMBHSTSTS smbusbase
 #define SMBHSTCNT smbusbase + 2
@@ -42,7 +51,7 @@ unsigned char ich5_smb_read_byte(unsigned char adr, unsigned char cmd)
     __outb((adr << 1) | 0x01, SMBHSTADD);
     __outb(0x48, SMBHSTCNT);
     rdtsc(l1, h1);
-    cprint(POP2_Y, POP2_X + 16, s + cmd % 8);	// progress bar
+    //cprint(POP2_Y, POP2_X + 16, s + cmd % 8);	// progress bar
     while (!(__inb(SMBHSTSTS) & 0x02)) {	// wait til command finished
 	rdtsc(l2, h2);
 	t = ((h2 - h1) * 0xffffffff + (l2 - l1)) / v->clks_msec;
@@ -57,7 +66,7 @@ static int ich5_read_spd(int dimmadr)
     spd[0] = ich5_smb_read_byte(0x50 + dimmadr, 0);
     if (spd[0] == 0xff)	return -1;		// no spd here
     for (x = 1; x < 256; x++) {
-	spd[x] = ich5_smb_read_byte(0x50 + dimmadr, (unsigned char) x);
+			spd[x] = ich5_smb_read_byte(0x50 + dimmadr, (unsigned char) x);
     }
     return 0;
 }
@@ -136,24 +145,171 @@ int find_smb_controller(void)
     int i = 0;
     unsigned long valuev, valued;
     for (smbdev = 0; smbdev < 32; smbdev++) {
-	for (smbfun = 0; smbfun < 8; smbfun++) {
-	    pci_conf_read(0, smbdev, smbfun, 0, 2, &valuev);
-	    if (valuev != 0xFFFF) {					// if there is something look what's it..
-		for (i = 0; smbcontrollers[i].vendor > 0; i++) {	// check if this is a known smbus controller
-		    if (valuev == smbcontrollers[i].vendor) {
-			pci_conf_read(0, smbdev, smbfun, 2, 2, &valued);	// read the device id
-			if (valued == smbcontrollers[i].device) {
-			    return i;
+			for (smbfun = 0; smbfun < 8; smbfun++) {
+		    pci_conf_read(0, smbdev, smbfun, 0, 2, &valuev);
+		    if (valuev != 0xFFFF) {					// if there is something look what's it..
+					for (i = 0; smbcontrollers[i].vendor > 0; i++) {	// check if this is a known smbus controller
+			    	if (valuev == smbcontrollers[i].vendor) {
+							pci_conf_read(0, smbdev, smbfun, 2, 2, &valued);	// read the device id
+							if (valued == smbcontrollers[i].device) {
+				    		return i;
+							}
+			    	}
+					}
+		    }	
 			}
-		    }
-		}
-	    }	
-	}
     }
     return -1;
 }
-	    
-	    
+
+
+
+void get_spd_spec(void)
+{
+	  int index;
+    int h, i, j, z;
+    int k = 0;
+    int module_size;
+    int curcol;
+    int temp_nbd;
+
+    index = find_smb_controller();
+    
+    if (index == -1) 
+    {
+    	// Unknown SMBUS Controller, exit
+			return;
+    }
+
+    smbcontrollers[index].get_adr();
+		cprint(LINE_SPD-2, 0, "Memory SPD Informations");
+		cprint(LINE_SPD-1, 0, "-----------------------------------");    
+		
+    for (j = 0; j < 8; j++) {
+			if (smbcontrollers[index].read_spd(j) == 0) {	
+				curcol = 1;
+				if(spd[2] == 0x0b){
+				  // We are here if DDR3 present
+				 
+				  // First print slot#, module capacity
+					cprint(LINE_SPD+k, curcol, " - Slot   :");
+					dprint(LINE_SPD+k, curcol+8, k, 1, 0);
+
+					module_size = get_ddr3_module_size(spd[4] & 0xF, spd[8] & 0x7, spd[7] & 0x7, spd[7] >> 3);
+					temp_nbd = getnum(module_size); curcol += 12;
+					dprint(LINE_SPD+k, curcol, module_size, temp_nbd, 0); curcol += temp_nbd;
+					cprint(LINE_SPD+k, curcol, " MB"); curcol += 4;
+					
+					// Then module jedec speed
+					switch(spd[12])
+					{
+						default:
+						case 20:
+							cprint(LINE_SPD+k, curcol, "PC3-6400");
+							curcol += 8;
+							break;
+						case 15:
+							cprint(LINE_SPD+k, curcol, "PC3-8500");
+							curcol += 8;
+							break;
+						case 12:
+							cprint(LINE_SPD+k, curcol, "PC3-10600");
+							curcol += 9;
+							break;
+						case 10:
+							cprint(LINE_SPD+k, curcol, "PC3-12800");
+							curcol += 9;
+							break;
+						case 8:
+							cprint(LINE_SPD+k, curcol, "PC3-15000");
+							curcol += 9;
+							break;
+						case 6:
+							cprint(LINE_SPD+k, curcol, "PC3-16000");
+							curcol += 9;
+							break;
+						}
+					
+					curcol++;
+					
+					// Then print module infos (manufacturer & part number)	
+					for (i = 0; jep106[i].cont_code < 9; i++) {	
+			    	if (spd[117] == jep106[i].cont_code && spd[118] == jep106[i].hex_byte) {
+			    		// We are here if a Jedec manufacturer is detected
+							cprint(LINE_SPD+k, curcol, "-"); curcol += 2;							
+							cprint(LINE_SPD+k, curcol, jep106[i].name);
+							for(z = 0; jep106[i].name[z] != '\0'; z++) { curcol++; }
+							curcol++;
+							// Display module serial number
+							for (h = 128; h < 146; h++) {	
+								cprint(16+k, curcol, convert_hex_to_char(spd[h]));
+								curcol++;		
+							}			
+															
+							// Detect XMP Memory
+							if(spd[176] == 0x0C && spd[177] == 0x4A)
+								{
+									cprint(LINE_SPD+k, curcol, "*XMP*");					
+								}
+			    	}
+					}		
+				}
+			// We enter this function if DDR2 is detected
+			if(spd[2] == 0x08){				
+					 // First print slot#, module capacity
+					cprint(LINE_SPD+k, curcol, " - Slot   :");
+					dprint(LINE_SPD+k, curcol+8, k, 1, 0);
+
+					module_size = get_ddr2_module_size(spd[31], spd[5]);
+					temp_nbd = getnum(module_size); curcol += 12;
+					dprint(LINE_SPD+k, curcol, module_size, temp_nbd, 0); curcol += temp_nbd;
+					cprint(LINE_SPD+k, curcol, " MB"); curcol += 4;		
+
+					// Then module jedec speed
+					float ddr2_speed, byte1, byte2;
+					
+					byte1 = (spd[9] >> 4) * 10;
+					byte2 = spd[9] & 0xF;
+					
+					ddr2_speed = 1 / (byte1 + byte2) * 10000;
+
+					temp_nbd = getnum(ddr2_speed);
+					cprint(LINE_SPD+k, curcol, "DDR2-"); curcol += 5;	 
+					dprint(LINE_SPD+k, curcol, ddr2_speed, temp_nbd, 0); curcol += temp_nbd;
+			
+					// Then print module infos (manufacturer & part number)	
+					int ccode = 0;
+					
+					for(i = 64; i < 72; i++)
+					{
+						if(spd[i] == 0x7F) { ccode++; }			
+					}
+					
+					curcol++;
+					
+					for (i = 0; jep106[i].cont_code < 9; i++) {	
+			    	if (ccode == jep106[i].cont_code && spd[64+ccode] == jep106[i].hex_byte) {
+			    		// We are here if a Jedec manufacturer is detected
+							cprint(LINE_SPD+k, curcol, "-"); curcol += 2;							
+							cprint(LINE_SPD+k, curcol, jep106[i].name);
+							for(z = 0; jep106[i].name[z] != '\0'; z++) { curcol++; }
+							curcol++;
+							// Display module serial number
+							for (h = 73; h < 91; h++) {	
+								cprint(16+k, curcol, convert_hex_to_char(spd[h]));
+								curcol++;		
+							}			
+															
+			    	}
+					}				
+
+				}	
+			k++;
+			}
+    }
+}
+
+	        
 void show_spd(void)
 {
     int index;
@@ -185,5 +341,224 @@ void show_spd(void)
 	}
     }
     pop2down();
+}
+
+int get_ddr3_module_size(int sdram_capacity, int prim_bus_width, int sdram_width, int ranks)
+{
+	int module_size;
+	
+	switch(sdram_capacity)
+	{
+		case 0:
+			module_size = 256;
+			break;
+		case 1:
+			module_size = 512;
+			break;		
+		default:
+		case 2:
+			module_size = 1024;
+			break;		
+		case 3:
+			module_size = 2048;
+			break;
+		case 4:
+			module_size = 4096;
+			break;		
+		case 5:
+			module_size = 8192;
+			break;	
+		case 6:
+			module_size = 16384;		
+			break;		
+		}
+		
+		module_size /= 8;
+	
+	switch(prim_bus_width)
+	{
+		case 0:
+			module_size *= 8;
+			break;
+		case 1:
+			module_size *= 16;
+			break;		
+		case 2:
+			module_size *= 32;
+			break;		
+		case 3:
+			module_size *= 64;
+			break;		
+		}		
+	
+		switch(sdram_width)
+	{
+		case 0:
+			module_size /= 4;
+			break;
+		case 1:
+			module_size /= 8;
+			break;		
+		case 2:
+			module_size /= 16;
+			break;		
+		case 3:
+			module_size /= 32;
+			break;		
+
+		}	
+	
+	module_size *= (ranks + 1);
+	
+	return module_size;
+}
+
+
+int get_ddr2_module_size(int rank_density_byte, int rank_num_byte)
+{
+	int module_size;
+	
+	switch(rank_density_byte)
+	{
+		case 1:
+			module_size = 1024;
+			break;
+		case 2:
+			module_size = 2048;
+			break;		
+		case 4:
+			module_size = 4096;
+			break;		
+		case 8:
+			module_size = 8192;
+			break;		
+		case 16:
+			module_size = 16384;
+			break;
+		case 32:
+			module_size = 128;
+			break;		
+		case 64:
+			module_size = 256;
+			break;		
+		default:
+		case 128:
+			module_size = 512;
+			break;	
+		}	
+		
+	module_size *= (rank_num_byte & 7) + 1;
+	
+	return module_size;
+		
+}
+
+
+struct ascii_map {
+    unsigned hex_code;
+    char *name;
+};
+
+struct ascii_map amap[] = {
+{ 0x20, " "},
+{ 0x21, "!"},
+{ 0x22, "'"},
+{ 0x23, "#"},
+{ 0x24, "$"},
+{ 0x25, "%"},
+{ 0x26, "&"},
+{ 0x28, "("},
+{ 0x29, ")"},
+{ 0x2A, "*"},
+{ 0x2B, "+"},
+{ 0x2C, ","},
+{ 0x2D, "-"},
+{ 0x2E, "."},
+{ 0x30, "0"},
+{ 0x31, "1"},
+{ 0x32, "2"},
+{ 0x33, "3"},
+{ 0x34, "4"},
+{ 0x35, "5"},
+{ 0x36, "6"},
+{ 0x38, "8"},
+{ 0x39, "9"},
+{ 0x3A, ":"},
+{ 0x3B, ";"},
+{ 0x3C, "<"},
+{ 0x3D, "="},
+{ 0x3E, ">"},
+{ 0x40, "@"},
+{ 0x41, "A"},
+{ 0x42, "B"},
+{ 0x43, "C"},
+{ 0x44, "D"},
+{ 0x45, "E"},
+{ 0x46, "F"},
+{ 0x47, "G"},
+{ 0x48, "H"},
+{ 0x49, "I"},
+{ 0x4A, "J"},
+{ 0x4B, "K"},
+{ 0x4C, "L"},
+{ 0x4D, "M"},
+{ 0x4E, "N"},
+{ 0x4F, "O"},
+{ 0x50, "P"},
+{ 0x51, "Q"},
+{ 0x52, "R"},
+{ 0x53, "S"},
+{ 0x54, "T"},
+{ 0x55, "U"},
+{ 0x56, "V"},
+{ 0x57, "W"},
+{ 0x58, "X"},
+{ 0x59, "Y"},
+{ 0x5A, "Z"},
+{ 0x5B, "["},
+{ 0x5C, "-"},
+{ 0x5D, "]"},
+{ 0x5E, "^"},
+{ 0x60, "`"},
+{ 0x61, "a"},
+{ 0x62, "b"},
+{ 0x63, "c"},
+{ 0x64, "d"},
+{ 0x65, "e"},
+{ 0x66, "f"},
+{ 0x68, "h"},
+{ 0x69, "i"},
+{ 0x6A, "j"},
+{ 0x6B, "k"},
+{ 0x6C, "l"},
+{ 0x6D, "m"},
+{ 0x6E, "n"},
+{ 0x6F, "o"},
+{ 0x70, "p"},
+{ 0x71, "q"},
+{ 0x72, "r"},
+{ 0x73, "s"},
+{ 0x74, "t"},
+{ 0x75, "u"},
+{ 0x76, "v"},
+{ 0x78, "x"},
+{ 0x79, "y"},
+{ 0x7A, "z"},
+{ 0x7B, "{"},
+{ 0x7C, "|"},
+{ 0x7D, "}"},
+{ 0x7E, "~"},
+{ 0, ""}
+};
+
+char* convert_hex_to_char(unsigned hex_org){
+	int i;
+	
+	for (i = 0; amap[i].hex_code > 0; i++) {	
+		if (hex_org == amap[i].hex_code) {
+			return amap[i].name;		
+	  }
+	}
+	return "";
 }
 
