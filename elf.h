@@ -14,7 +14,7 @@
 #define EM_NONE		 0		/* No machine */
 #define EM_M32		 1		/* AT&T WE 32100 */
 #define EM_SPARC	 2		/* SUN SPARC */
-#define EM_386		 3		/* Intel 80386+*/
+#define EM_386		 3		/* Intel 80386+ */
 #define EM_68K		 4		/* Motorola m68k family */
 #define EM_88K		 5		/* Motorola m88k family */
 #define EM_486		 6		/* Perhaps disused */
@@ -61,7 +61,7 @@
 #define EM_PDSP		63		/* Sony DSP Processor */
 
 #define EM_FX66		66		/* Siemens FX66 microcontroller */
-#define EM_ST9PLUS	67		/* STMicroelectronics ST9+8/16 mc */
+#define EM_ST9PLUS	67		/* STMicroelectronics ST9+ 8/16 mc */
 #define EM_ST7		68		/* STmicroelectronics ST7 8 bit mc */
 #define EM_68HC16	69		/* Motorola MC68HC16 microcontroller */
 #define EM_68HC11	70		/* Motorola MC68HC11 microcontroller */
@@ -145,8 +145,8 @@
 #include "stdint.h"
 
 /*
-* ELF definitions common to all 32-bit architectures.
-*/
+ * ELF definitions common to all 32-bit architectures.
+ */
 
 typedef uint32_t	Elf32_Addr;
 typedef uint16_t	Elf32_Half;
@@ -167,8 +167,8 @@ typedef uint64_t	Elf64_Xword;
 typedef	int64_t		Elf64_Sxword;
 
 /*
-* ELF header.
-*/
+ * ELF header.
+ */
 typedef struct {
 	unsigned char	e_ident[EI_NIDENT];	/* File identification. */
 	Elf32_Half	e_type;		/* File type. */
@@ -204,8 +204,8 @@ typedef struct {
 } Elf64_Ehdr;
 
 /*
-* Program header.
-*/
+ * Program header.
+ */
 typedef struct {
 	Elf32_Word	p_type;		/* Entry type. */
 	Elf32_Off	p_offset;	/* File offset of contents. */
@@ -295,8 +295,8 @@ typedef struct
 #define	DT_PROCNUM	0x32		/* Most used by any processor */
 
 /* DT_* entries which fall between DT_VALRNGHI & DT_VALRNGLO use the
- Dyn.d_un.d_val field of the Elf*_Dyn structure.  This follows Sun's
- approach.  */
+   Dyn.d_un.d_val field of the Elf*_Dyn structure.  This follows Sun's
+   approach.  */
 #define DT_VALRNGLO	0x6ffffd00
 #define DT_GNU_PRELINKED 0x6ffffdf5	/* Prelinking timestamp */
 #define DT_GNU_CONFLICTSZ 0x6ffffdf6	/* Size of conflict section */
@@ -315,10 +315,10 @@ typedef struct
 #define DT_VALNUM 12
 
 /* DT_* entries which fall between DT_ADDRRNGHI & DT_ADDRRNGLO use the
- Dyn.d_un.d_ptr field of the Elf*_Dyn structure.
+   Dyn.d_un.d_ptr field of the Elf*_Dyn structure.
 
- If any adjustment is made to the ELF object after it has been
- built these entries will need to be adjusted.  */
+   If any adjustment is made to the ELF object after it has been
+   built these entries will need to be adjusted.  */
 #define DT_ADDRRNGLO	0x6ffffe00
 #define DT_GNU_CONFLICT	0x6ffffef8	/* Start of conflict section */
 #define DT_GNU_LIBLIST	0x6ffffef9	/* Library list */
@@ -333,7 +333,7 @@ typedef struct
 #define DT_ADDRNUM 10
 
 /* The versioning entry types.  The next are defined as part of the
- GNU extension.  */
+   GNU extension.  */
 #define DT_VERSYM	0x6ffffff0
 
 #define DT_RELACOUNT	0x6ffffff9
@@ -351,7 +351,7 @@ typedef struct
 #define DT_VERSIONTAGNUM 16
 
 /* Sun added these machine-independent extensions in the "processor-specific"
- range.  Be compatible.  */
+   range.  Be compatible.  */
 #define DT_AUXILIARY    0x7ffffffd      /* Shared object to load before self */
 #define DT_FILTER       0x7fffffff      /* Shared object to get values from */
 #define DT_EXTRATAGIDX(tag)	((Elf32_Word)-((Elf32_Sword) (tag) <<1>>1)-1)
@@ -365,7 +365,7 @@ typedef struct
 #define DF_STATIC_TLS	0x00000010	/* Module uses the static TLS model */
 
 /* State flags selectable in the `d_un.d_val' element of the DT_FLAGS_1
- entry in the dynamic section.  */
+   entry in the dynamic section.  */
 #define DF_1_NOW	0x00000001	/* Set RTLD_NOW for this object.  */
 #define DF_1_GLOBAL	0x00000002	/* Set RTLD_GLOBAL for this object.  */
 #define DF_1_GROUP	0x00000004	/* Set RTLD_GROUP for this object.  */
@@ -493,8 +493,8 @@ typedef struct
 } Elf32_Rel;
 
 /* I have seen two different definitions of the Elf64_Rel and
- Elf64_Rela structures, so we'll leave them out until Novell (or
- whoever) gets their act together.  */
+   Elf64_Rela structures, so we'll leave them out until Novell (or
+   whoever) gets their act together.  */
 /* The following, at least, is used on Sparc v9, MIPS, and Alpha.  */
 
 typedef struct
@@ -523,11 +523,11 @@ typedef struct
 
 #define ELF32_R_SYM(val)		((val) >> 8)
 #define ELF32_R_TYPE(val)		((val) & 0xff)
-#define ELF32_R_INFO(sym, type)		(((sym) << 8) +((type) & 0xff))
+#define ELF32_R_INFO(sym, type)		(((sym) << 8) + ((type) & 0xff))
 
 #define ELF64_R_SYM(i)			((i) >> 32)
 #define ELF64_R_TYPE(i)			((i) & 0xffffffff)
-#define ELF64_R_INFO(sym,type)		((((Elf64_Xword) (sym)) << 32) +(type))
+#define ELF64_R_INFO(sym,type)		((((Elf64_Xword) (sym)) << 32) + (type))
 
 
 /* Intel 80386 specific definitions.  */
@@ -581,7 +581,8 @@ typedef struct
 					   TLS block */
 #define R_386_TLS_DTPMOD32 35		/* ID of module containing symbol */
 #define R_386_TLS_DTPOFF32 36		/* Offset in TLS block */
-#define R_386_TLS_TPOFF32  37		/* Negated offset in static TLS block *//* Keep this the last entry.  */
+#define R_386_TLS_TPOFF32  37		/* Negated offset in static TLS block */
+/* Keep this the last entry.  */
 #define R_386_NUM	   38
 
 #endif /* ASSEMBLY */

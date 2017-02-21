@@ -17,48 +17,17 @@
 #include "config.h"
 #include "test.h"
 
-/*
- * References to members of the boot_cpu_data structure.
- */
-#define CPU_PARAMS	cpu_id
-#define X86		0
-#define X86_MODEL	1
-#define X86_MASK	2
-#define X86_CPUID	4
-#define X86_CAPABILITY	8
-#define X86_VENDOR_ID	12
-#define X86_CACHE	24
-#define X86_PWRCAP 40
-#define X86_EXT	44
-#define X86_FFL	48
-#define X86_DCACHE0_EAX	52
-#define X86_DCACHE0_EBX	56
-#define X86_DCACHE0_ECX	60
-#define X86_DCACHE0_EDX	64
-#define X86_DCACHE1_EAX	68
-#define X86_DCACHE1_EBX	72
-#define X86_DCACHE1_ECX	76
-#define X86_DCACHE1_EDX	80
-#define X86_DCACHE2_EAX	84
-#define X86_DCACHE2_EBX	88
-#define X86_DCACHE2_ECX	92
-#define X86_DCACHE2_EDX	96
-#define X86_DCACHE3_EAX	100
-#define X86_DCACHE3_EBX	104
-#define X86_DCACHE3_ECX	108
-#define X86_DCACHE3_EDX	112
-
 	.code32
 	.globl startup_32
 startup_32:
 	cld
 	cli
 
-	/* Ensure I have a stack pointer */
+	/* Ensure I have a boot_stack pointer */
 	testl	%esp, %esp
 	jnz 0f
 	movl	$(LOW_TEST_ADR + _GLOBAL_OFFSET_TABLE_), %esp
-	leal	stack_top@GOTOFF(%esp), %esp
+	leal	boot_stack_top@GOTOFF(%esp), %esp
 0:
 
 	/* Load the GOT pointer */
@@ -66,8 +35,8 @@ startup_32:
 0:	popl	%ebx
 	addl	$_GLOBAL_OFFSET_TABLE_+[.-0b], %ebx
 
-	/* Pick the appropriate stack address */
-	leal	stack_top@GOTOFF(%ebx), %esp
+	/* Pick the appropriate boot_stack address */
+	leal	boot_stack_top@GOTOFF(%ebx), %esp
 
 	/* Reload all of the segment registers */
 	leal	gdt@GOTOFF(%ebx), %eax
@@ -101,23 +70,7 @@ flush:	movl	$KERNEL_DS, %eax
 zerobss_done:
 
 /*
- * Clear the video display
- */
-	cmpl	$1, clear_display@GOTOFF(%ebx)
-	jnz	clear_display_done
-	movw	$0x0720, %ax
-	movl	$0xb8000, %edi
-	movl	$0xc0000, %ecx
-1:	movw	%ax, (%edi)
-	addl	$2, %edi
-	cmpl	%ecx, %edi
-	jnz	1b
-	movl	$0, clear_display@GOTOFF(%ebx)
-clear_display_done:
-
-
-/*
- * Setup and exception handler
+ * Setup an exception handler
  */
 	leal	idt@GOTOFF(%ebx), %edi
 
@@ -286,216 +239,14 @@ clear_display_done:
 	movl	%eax, 2 + idt_descr@GOTOFF(%ebx)
 	lidt	idt_descr@GOTOFF(%ebx)
 
-/* Find out the CPU type */
-
-	leal	cpu_id@GOTOFF(%ebx), %esi
-	movl	%ebx, %edi
-
-	movl	$-1, X86_CPUID(%esi)	#  -1 for no CPUID initially
-
-/* check if it is 486 or 386. */
-
-	movl	$3, X86(%esi)	# at least 386
-	pushfl			# push EFLAGS
-	popl	%eax		# get EFLAGS
-	movl	%eax, %ecx	# save original EFLAGS
-	xorl	$0x40000, %eax	# flip AC bit in EFLAGS
-	pushl	%eax		# copy to EFLAGS
-	popfl			# set EFLAGS
-	pushfl			# get new EFLAGS
-	popl	%eax		# put it in eax
-	xorl	%ecx, %eax	# change in flags
-	andl	$0x40000, %eax	# check if AC bit changed
-	je	id_done
-
-	movl	$4, X86(%esi)	# at least 486
-	movl	%ecx, %eax
-	xorl	$0x200000, %eax	# check ID flag
-	pushl	%eax
-	popfl			# if we are on a straight 486DX, SX, or
-	pushfl			# 487SX we can't change it
-	popl	%eax
-	xorl	%ecx, %eax
-	pushl	%ecx		# restore original EFLAGS
-	popfl
-	andl	$0x200000, %eax
-	jne	have_cpuid
-
-	/* Test for Cyrix CPU types */
-	xorw	%ax, %ax	# clear ax
-	sahf			# clear flags
-	movw	$5, %ax
-	movw	$2, %bx
-	div	%bl		# do operation that does not change flags
-	lahf			# get flags
-	cmp	$2, %ah		# check for change in flags
-	jne	id_done		# if not Cyrix
-	movl	$2, X86(%esi)	# Use two to identify as Cyrix
-	jmp	id_done
-
-have_cpuid:
-	/* get vendor info */
-	xorl	%eax, %eax			# call CPUID with 0 -> return vendor ID
-	cpuid
-	movl	%eax, X86_CPUID(%esi)		# save CPUID level
-	movl	%ebx, X86_VENDOR_ID(%esi)	# first 4 chars
-	movl	%edx, X86_VENDOR_ID+4(%esi)	# next 4 chars
-	movl	%ecx, X86_VENDOR_ID+8(%esi)	# last 4 chars
-
-	orl	%eax, %eax			# do we have processor info as well?
-	je	id_done
-
-	movl	$1, %eax		# Use the CPUID instruction to get CPU type
-	cpuid
-
-
-	#
-	# CDH start
-	# Check FPU, initialize if present
-	#
-	testl $1, %edx # FPU available?
-	jz no_fpu
-	finit
-
-	no_fpu:
-	#
-	# CDH end
-	#
-
-	movl  %eax, X86_EXT(%esi) # save complete extended CPUID to X86_EXT
-	movl  %ecx, X86_FFL(%esi) # save ECX Feature Flags to X86_FFL
-	movb	%al, %cl		# save reg for future use
-	andb	$0x0f, %ah		# mask processor family
-	movb	%ah, X86(%esi)
-	andb	$0xf0, %al		# mask model
-	shrb	$4, %al
-	movb	%al, X86_MODEL(%esi)
-	andb	$0x0f, %cl		# mask mask revision
-	movb	%cl, X86_MASK(%esi)
-	movl	%edx, X86_CAPABILITY(%esi)
-
-	movl	$0, X86_CACHE(%esi)
-	movl	$0, X86_CACHE+4(%esi)
-	movl	$0, X86_CACHE+8(%esi)
-	movl	$0, X86_CACHE+12(%esi)
-
-	movl	X86_VENDOR_ID+8(%esi), %eax
-	cmpl	$0x6c65746e,%eax	# Is this an Intel CPU? "GenuineIntel"
-	jne	not_intel
-	movb	%bl, X86_PWRCAP(%esi) 	# Store BrandID in AMD PWRCAP if the CPU is from Intel
-	movl	$2, %eax		# Use the CPUID instruction to get cache info
-	cpuid
-	movl	%eax, X86_CACHE(%esi)
-	movl	%ebx, X86_CACHE+4(%esi)
-	movl	%ecx, X86_CACHE+8(%esi)
-	movl	%edx, X86_CACHE+12(%esi)
-# Grab deterministic cache information (for 32nm Intel CPU)
-	cmpw $0x0000,%dx
-	jne id_done
-	movl $4, %eax
-	movl $0, %ecx
-	cpuid
-	movl	%eax, X86_DCACHE0_EAX(%esi)
-	movl	%ebx, X86_DCACHE0_EBX(%esi)
-	movl	%ecx, X86_DCACHE0_ECX(%esi)
-	movl	%edx, X86_DCACHE0_EDX(%esi)	
-	movl $4, %eax
-	movl $1, %ecx
-	cpuid
-	movl	%eax, X86_DCACHE1_EAX(%esi)
-	movl	%ebx, X86_DCACHE1_EBX(%esi)
-	movl	%ecx, X86_DCACHE1_ECX(%esi)
-	movl	%edx, X86_DCACHE1_EDX(%esi)	
-	movl $4, %eax
-	movl $2, %ecx
-	cpuid
-	movl	%eax, X86_DCACHE2_EAX(%esi)
-	movl	%ebx, X86_DCACHE2_EBX(%esi)
-	movl	%ecx, X86_DCACHE2_ECX(%esi)
-	movl	%edx, X86_DCACHE2_EDX(%esi)	
-	movl $4, %eax
-	movl $3, %ecx
-	cpuid
-	movl	%eax, X86_DCACHE3_EAX(%esi)
-	movl	%ebx, X86_DCACHE3_EBX(%esi)
-	movl	%ecx, X86_DCACHE3_ECX(%esi)
-	movl	%edx, X86_DCACHE3_EDX(%esi)	
-	jmp	id_done
-
-not_intel:
-	movl	X86_VENDOR_ID+8(%esi),%eax
-	cmpl	$0x444d4163, %eax	# Is this an AMD CPU? "AuthenticAMD"
-	jne	not_amd
-
-	movl	$0x80000005, %eax	# Use the CPUID instruction to get cache info
-	cpuid
-	movl	%ecx, X86_CACHE(%esi)
-	movl	%edx, X86_CACHE+4(%esi)
-	movl	$0x80000006,%eax	# Use the CPUID instruction to get cache info
-	cpuid
-	movl	%ecx,X86_CACHE+8(%esi)
-	movl	%edx,X86_CACHE+12(%esi)
-	movl	$0x80000007,%eax	# Use the CPUID instruction to get AMD Powercap
-	cpuid
-	movl	%edx,X86_PWRCAP(%esi)
-
-not_amd:
-	movl	X86_VENDOR_ID+8(%esi), %eax
-	cmpl	$0x3638784D, %eax	# Is this a Transmeta CPU? "GenuineTMx86"
-	jne	not_transmeta
-
-	movl	$0x80000000, %eax	# Use the CPUID instruction to check for cache info
-	cpuid
-	cmp	$6, %al			# Is cache info available?
-	jb	id_done
-
-	movl	$0x80000005, %eax	# Use the CPUID instruction to get L1 cache info
-	cpuid
-	movl	%ecx, X86_CACHE(%esi)
-	movl	%edx, X86_CACHE+4(%esi)
-	movl	$0x80000006, %eax	# Use the CPUID instruction to get L2 cache info
-	cpuid
-	movl	%ecx, X86_CACHE+8(%esi)
-
-not_transmeta:
-	movl	X86_VENDOR_ID+8(%esi), %eax
-	cmpl	$0x64616574, %eax	# Is this a Via/Cyrix CPU? "CyrixInstead"
-	jne	not_cyrix
-
-	movl	X86_CPUID(%esi), %eax	# get CPUID level
-	cmpl	$2, %eax		# Is there cache information available ?
-	jne	id_done
-
-	movl	$2, %eax		# Use the CPUID instruction to get cache info
-	cpuid
-	movl	%edx, X86_CACHE(%esi)
-
-not_cyrix:
-	movl	X86_VENDOR_ID+8(%esi), %eax
-	cmpl	$0x736C7561, %eax	# Is this a Via/Centaur CPU "CentaurHauls"
-	jne	not_centaur
-
-	movl	$0x80000000, %eax	# Use the CPUID instruction to check for cache info
-	cpuid
-	cmp	$6, %al			# Is cache info available?
-	jb	id_done
-
-	movl	$0x80000005, %eax	# Use the CPUID instruction to get L1 cache info
-	cpuid
-	movl	%ecx, X86_CACHE(%esi)
-	movl	%edx, X86_CACHE+4(%esi)
-	movl	$0x80000006, %eax	# Use the CPUID instruction to get L2 cache info
-	cpuid
-	movl	%ecx, X86_CACHE+8(%esi)
-
-
-not_centaur:
-id_done:
-	movl	%edi, %ebx	/* Restore GOT pointer */
-
 	leal	_dl_start@GOTOFF(%ebx), %eax
 	call	*%eax
-	call	do_test
+
+	/* Never forget to initialize the FPU ... Never ! */ 
+	finit
+
+	call	test_start
+
 	/* In case we return simulate an exception */
 	pushfl
 	pushl	%cs
@@ -612,11 +363,12 @@ int_hand:
 	pushl	%esi
 	pushl	%ebp
 
-	/* original stack pointer */
-	leal	20(%esp), %eax
+	/* original boot_stack pointer */
+	leal	48(%esp), %eax
 	pushl	%eax
-
-	pushl	%esp /* pointer to structure on the stack */
+	pushl	%ds  
+	pushl	%ss 
+	pushl	%esp /* pointer to trap regs struct on the boot_stack */
 	call	inter
 	addl	$8, %esp
 
@@ -650,8 +402,8 @@ gdt_descr:
 gdt:
 	.quad 0x0000000000000000	/* NULL descriptor */
 	.quad 0x0000000000000000	/* not used */
-	.quad 0x00cf9a000000ffff	/* 0x10 main 4gb code at 0x000000 */
-	.quad 0x00cf92000000ffff	/* 0x18 main 4gb data at 0x000000 */
+	.quad 0x00cf9b000000ffff	/* 0x10 main 4gb code at 0x000000 */
+	.quad 0x00cf93000000ffff	/* 0x18 main 4gb data at 0x000000 */
 
 	.word	0xFFFF				# 16bit 64KB - (0x10000*1 = 64KB)
 	.word	0				# base address = SETUPSEG
@@ -690,6 +442,10 @@ maxdepth \depth-1
 
 maxdepth
 
+# Page Directory Tables:
+# There are 4 tables, the first two map the first 2 GB of memory. The last two are used with # PAE to map
+# the rest of memory in 2 GB segments. The last two tables are changed in vmem.c to map each segment.
+# We use 2 MB pages so only the Page Directory Table is used (no page tables). 
 .balign 4096
 .globl pd0
 pd0:
@@ -710,6 +466,8 @@ pd2:
 pd3:
 	ptes64 0x00000000C0000000
 
+# Legacy Mode Page Directory Pointer Table:
+# 4 Entries, pointing to the Page Directory Tables
 .balign 4096
 .globl pdp
 pdp:
@@ -717,11 +475,30 @@ pdp:
 	.long 0
 	.long pd1 + 1
 	.long 0
-
 	.long pd2 + 1
 	.long 0
-
 	.long pd3 + 1
+	.long 0
+
+# Long Mode Page Directory Pointer Table:
+# 4 Entries, pointing to the Page Directory Tables
+.balign 4096
+lpdp:
+	.long pd0 + 3
+	.long 0
+	.long pd1 + 3
+	.long 0
+	.long pd2 + 3
+	.long 0
+	.long pd3 + 3
+	.long 0
+
+
+# The long mode level 4 page map table
+.balign 4096
+.globl pml4
+pml4:
+	.long lpdp + 3
 	.long 0
 .previous
 
@@ -788,8 +565,8 @@ query_pcbios:
 	movl	%eax, %fs
 	movl	%eax, %gs
 
-	/* Compute the stack base */
-	leal	stack@GOTOFF(%ebx), %ecx
+	/* Compute the boot_stack base */
+	leal	boot_stack@GOTOFF(%ebx), %ecx
 	/* Compute the address of meminfo */
 	leal	mem_info@GOTOFF(%ebx), %edi
 
@@ -818,7 +595,7 @@ real:
 	movw	%ax, %gs
 	movw	%ax, %ss
 
-	/* Adjust the stack pointer */
+	/* Adjust the boot_stack pointer */
 	movl	%ecx, %eax
 	shrl	$4, %eax
 	movw	%ax, %ss
@@ -991,8 +768,8 @@ prot:
 	movl	%eax, %gs
 	movl	%eax, %ss
 
-	/* Adjust the stack pointer */
-	leal	stack@GOTOFF(%ebx), %eax
+	/* Adjust the boot_stack pointer */
+	leal	boot_stack@GOTOFF(%ebx), %eax
 	addl	%eax, %esp
 
 	/* Restore the caller saved registers */
@@ -1014,9 +791,45 @@ idt_real:
 	.word	0x400 - 1			# idt limit ( 256 entries)
 	.word	0, 0				# idt base = 0L
 
+/* _ap_trampoline_start is the entry point for cpus other than the
+ * bootstrap cpu. The code between _ap_trampoline_start to
+ * _ap_trampoline_protmode is copied to BootCodeStart(0x9000).
+ * The ljmp after turning on CR0.PE will jump to the
+ * relocatable code which usually resides at 0x10000 + _ap_trampoline_protmode.
+ *
+ * The trampoline code uses a temporary GDT. The entries of this temporary
+ * GDT must match the first few entries of the GDT used by the relocatble
+ * memtest code(see 'gdt' sybmol in this file).
+ *
+ */
+	.globl _ap_trampoline_start
+	.globl _ap_trampoline_protmode
+	.code16
+_ap_trampoline_start:
+	lgdt    0x0 /* will be fixed up later, see smp.c:BootAP()*/
+	movl	%cr0, %eax
+	orl	$1, %eax
+	movl	%eax, %cr0
+	data32 ljmp    $KERNEL_CS, $_ap_trampoline_protmode
+_ap_trampoline_protmode:
+	.code32
+	movw	$KERNEL_DS, %ax
+	movw	%ax, %ds
+	movw	%ax, %es
+	movw	%ax, %fs
+	movw	%ax, %gs
+	movw	%ax, %ss
+	movl	$(LOW_TEST_ADR + _GLOBAL_OFFSET_TABLE_), %esp
+	leal	boot_stack_top@GOTOFF(%esp), %esp
+	pushl   $0
+	popf
+	call    startup_32
+	/* if we ever return, we'll just loop forever */
+	cli
+2:	hlt
+	jmp 2b	
 .data
 zerobss:	.long	1
-clear_display:	.long	1
 .previous
 .data
 .balign 16
@@ -1026,7 +839,9 @@ mem_info:
 .previous
 .bss
 .balign 16
-stack:
-	. = . + 8192
-stack_top:
+boot_stack:
+	.globl boot_stack
+	. = . + 4096
+boot_stack_top:
+	.globl boot_stack_top
 .previous

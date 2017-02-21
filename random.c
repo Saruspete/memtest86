@@ -1,31 +1,38 @@
+/******************************************************************/
+/* Random number generator */
 /* concatenation of following two 16-bit multiply with carry generators */
 /* x(n)=a*x(n-1)+carry mod 2^16 and y(n)=b*y(n-1)+carry mod 2^16, */
 /* number and carry packed within the same 32 bit integer.        */
 /******************************************************************/
+#include "stdint.h"
+#include "cpuid.h"
+#include "smp.h"
 
-unsigned int rand( void );           /* returns a random 32-bit integer */
-void  rand_seed( unsigned int, unsigned int );      /* seed the generator */
+/* Keep a separate seed for each CPU */
+/* Space the seeds by at least a cache line or performance suffers big time! */
+static unsigned int SEED_X[MAX_CPUS*16];
+static unsigned int SEED_Y[MAX_CPUS*16];
 
-/* return a random float >= 0 and < 1 */
-#define rand_float          ((double)rand() / 4294967296.0)
-
-static unsigned int SEED_X = 521288629;
-static unsigned int SEED_Y = 362436069;
-
-
-unsigned int rand ()
-   {
+unsigned long rand (int cpu)
+{
    static unsigned int a = 18000, b = 30903;
+   int me;
 
-   SEED_X = a*(SEED_X&65535) + (SEED_X>>16);
-   SEED_Y = b*(SEED_Y&65535) + (SEED_Y>>16);
+   me = cpu*16;
 
-   return ((SEED_X<<16) + (SEED_Y&65535));
-   }
+   SEED_X[me] = a*(SEED_X[me]&65535) + (SEED_X[me]>>16);
+   SEED_Y[me] = b*(SEED_Y[me]&65535) + (SEED_Y[me]>>16);
+
+   return ((SEED_X[me]<<16) + (SEED_Y[me]&65535));
+}
 
 
-void rand_seed( unsigned int seed1, unsigned int seed2 )
-   {
-   if (seed1) SEED_X = seed1;   /* use default seeds if parameter is 0 */
-   if (seed2) SEED_Y = seed2;
-   }
+void rand_seed( unsigned int seed1, unsigned int seed2, int cpu)
+{
+   int me;
+
+   me = cpu*16;
+   SEED_X[me] = seed1;   
+   SEED_Y[me] = seed2;
+}
+

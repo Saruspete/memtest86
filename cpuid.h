@@ -1,83 +1,76 @@
 /*
  * cpuid.h --
- *
  *      contains the data structures required for CPUID 
  *      implementation.
- *
  */
-
-#ifndef _CPUID_H_
-#define _CPUID_H_
-#include "stdint.h"
-#include "defs.h"
-#include "smp.h"
-
-#define CPUID_EXTENDED_BASE    0x80000000
-#define CPUID_EXTENDED_FEATURE 0x80000001
-#define CPUID_EXTENDED_BRAND1  0x80000002
-#define CPUID_EXTENDED_BRAND2  0x80000003
-#define CPUID_EXTENDED_BRAND3  0x80000004
 
 #define CPUID_VENDOR_LENGTH     3               /* 3 GPRs hold vendor ID */
 #define CPUID_VENDOR_STR_LENGTH (CPUID_VENDOR_LENGTH * sizeof(uint32_t) + 1)
 #define CPUID_BRAND_LENGTH      12              /* 12 GPRs hold vendor ID */
 #define CPUID_BRAND_STR_LENGTH  (CPUID_BRAND_LENGTH * sizeof(uint32_t) + 1)
 
-#define CPUID_FAMILY(_eax)   (((_eax) >> 8) & 0xf)
-/* Intel CPU Family */
-#define CPUID_FAMILY_486     4
-#define CPUID_FAMILY_P5      5
-#define CPUID_FAMILY_P6      6
-#define CPUID_FAMILY_EXTENDED 15
+extern struct cpu_ident cpu_id;
 
-#define CPUID_EXTENDED_FAMILY(_eax)   (((_eax) >> 20) & 0xff)
-#define CPUID_EXTENDED_FAMILY_PENTIUM4  0
-#define CPUID_EXTENDED_FAMILY_OPTERON   0
-
-
-#define CPUID_FAMILY_IS_OPTERON(_eax) \
-           (CPUID_FAMILY(_eax) == CPUID_FAMILY_EXTENDED && \
-            CPUID_EXTENDED_FAMILY(_eax) == CPUID_EXTENDED_FAMILY_OPTERON)                                                                                              
-#define CPUID_FEATURE_COMMON_ID1EDX_HT         0x10000000 /* 28 */
-
-
-typedef struct {
-   uint32_t eax;
-   uint32_t ebx; 
-   uint32_t ecx; 
-   uint32_t edx;
-} cpuid_t;
-
-/* cached CPUID data for CPUID(0) and CPUID(0x80000000) */
-extern cpuid_t cpuid_data0;
-extern cpuid_t cpuid_data80;
-
-
-static inline unsigned
-cpuid_max_func()
+static inline void __cpuid(unsigned int *eax, unsigned int *ebx,
+                                unsigned int *ecx, unsigned int *edx)
 {
-   return cpuid_data0.eax;
+        /* ecx is often an input as well as an output. */
+        asm volatile("\t"
+      	    "push %%ebx; cpuid; mov %%ebx, %%edi; pop %%ebx"
+            : "=a" (*eax),
+              "=D" (*ebx),
+              "=c" (*ecx),
+              "=d" (*edx)
+            : "0" (*eax), "2" (*ecx));
 }
 
-
-static inline unsigned
-cpuid_max_ext_func()
+static inline void cpuid(unsigned int op,
+                         unsigned int *eax, unsigned int *ebx,
+                         unsigned int *ecx, unsigned int *edx)
 {
-   return cpuid_data80.eax;
+        *eax = op;
+        *ecx = 0;
+        __cpuid(eax, ebx, ecx, edx);
 }
 
+/* Some CPUID calls want 'count' to be placed in ecx */
+static inline void cpuid_count(unsigned int op, int count,
+                               unsigned int *eax, unsigned int *ebx,
+                               unsigned int *ecx, unsigned int *edx)
+{
+        *eax = op;
+        *ecx = count;
+        __cpuid(eax, ebx, ecx, edx);
+}
+
+/* Typedef for storing the Cache Information */
+typedef union {
+   unsigned char ch[48];
+   uint32_t      uint[12];
+   struct {
+      uint32_t    fill1:24;      /* Bit 0 */
+      uint32_t    l1_i_sz:8;
+      uint32_t    fill2:24; 
+      uint32_t    l1_d_sz:8;
+      uint32_t    fill3:16; 
+      uint32_t    l2_sz:16;
+      uint32_t    fill4:18; 
+      uint32_t    l3_sz:14;
+      uint32_t    fill5[8];
+   } amd;
+} cpuid_cache_info_t;
 
 /* Typedef for storing the CPUID Vendor String */
 typedef union {
    /* Note: the extra byte in the char array is for '\0'. */
-   char         char_array[CPUID_VENDOR_STR_LENGTH];
+   char           char_array[CPUID_VENDOR_STR_LENGTH];
    uint32_t       uint32_array[CPUID_VENDOR_LENGTH];
 } cpuid_vendor_string_t;
 
 /* Typedef for storing the CPUID Brand String */
 typedef union {
    /* Note: the extra byte in the char array is for '\0'. */
-   char         char_array[CPUID_BRAND_STR_LENGTH];
+   char           char_array[CPUID_BRAND_STR_LENGTH];
    uint32_t       uint32_array[CPUID_BRAND_LENGTH];
 } cpuid_brand_string_t;
 
@@ -109,20 +102,27 @@ typedef union {
 
 /* Typedef for storing CPUID Feature flags */
 typedef union {
-   uint64_t       flat;
-   uint32_t       uint32_array[2];
+   uint32_t flat;
    struct {
-      uint32_t    fpu:1;           /* Bit 0 */
+      uint32_t    :1;           
+   } bits;
+} cpuid_custom_features;
+
+/* Typedef for storing CPUID Feature flags */
+typedef union {
+   uint32_t       uint32_array[3];
+   struct {
+      uint32_t    fpu:1;           /* EDX feature flags, bit 0 */
       uint32_t    vme:1;
       uint32_t    de:1;
       uint32_t    pse:1;
-      uint32_t    tsc:1;
+      uint32_t    rdtsc:1;
       uint32_t    msr:1;
       uint32_t    pae:1;
       uint32_t    mce:1;
       uint32_t    cx8:1;
       uint32_t    apic:1;
-      uint32_t    reserved10:1;
+      uint32_t    bit10:1;
       uint32_t    sep:1;
       uint32_t    mtrr:1;
       uint32_t    pge:1;
@@ -132,7 +132,7 @@ typedef union {
       uint32_t    pse36:1;
       uint32_t    psn:1;
       uint32_t    cflush:1;
-      uint32_t    reserved20:1;
+      uint32_t    bit20:1;
       uint32_t    ds:1;
       uint32_t    acpi:1;
       uint32_t    mmx:1;
@@ -142,76 +142,55 @@ typedef union {
       uint32_t    ss:1;
       uint32_t    htt:1;
       uint32_t    tm:1;
-      uint32_t    reserved30:1;
-      uint32_t    pbe:1;           /* Bit 31 */
-      uint32_t    sse3:1;          /* Bit 32 */
-      uint32_t    reserved3433:2;
-      uint32_t    monitor:1;
+      uint32_t    bit30:1;
+      uint32_t    pbe:1;           /* EDX feature flags, bit 31 */
+      uint32_t    sse3:1;          /* ECX feature flags, bit 0 */
+      uint32_t    mulq:1;
+      uint32_t    bit2:1;
+      uint32_t    mon:1;
       uint32_t    dscpl:1;
-      uint32_t    reserved3937:3;
-      uint32_t    tm2:1;
-      uint32_t    reserved41:1;
-      uint32_t    cnxtid:1;
-      uint32_t    reserved4443:2;
-      uint32_t    cmpxchg16b:1;
-      uint32_t    reserved6346:18; /* Bit 63 */
+      uint32_t    vmx:1;
+     	uint32_t    smx:1;      	
+     	uint32_t    eist:1;  
+     	uint32_t    tm2:1;       		     		
+      uint32_t    bits_9_31:23;
+      uint32_t    bits0_28:29;     /* EDX extended feature flags, bit 0 */
+      uint32_t    lm:1;		   /* Long Mode */
+      uint32_t    bits_30_31:2;    /* EDX extended feature flags, bit 32 */
    } bits;
 } cpuid_feature_flags_t;
 
-/* Feature flags returned by extended CPUID node function 8000_0001. */
-typedef union {
-   uint64_t       flat;
-   uint32_t       uint32_array[2];
-   struct {
-      uint32_t    fpu:1;           /* Bit 0 */
-      uint32_t    vme:1;
-      uint32_t    de:1;
-      uint32_t    pse:1;
-      uint32_t    tsc:1;
-      uint32_t    msr:1;
-      uint32_t    pae:1;
-      uint32_t    mce:1;
-      uint32_t    cx8:1;
-      uint32_t    apic:1;
-      uint32_t    reserved10:1;
-      uint32_t    sep:1;
-      uint32_t    mtrr:1;
-      uint32_t    pge:1;
-      uint32_t    mca:1;
-      uint32_t    cmov:1;
-      uint32_t    pat:1;
-      uint32_t    pse36:1;
-      uint32_t    reserved1918:2;
-      uint32_t    nx:1;
-      uint32_t    reserved21:1;
-      uint32_t    mmxamd:1;
-      uint32_t    mmx:1;
-      uint32_t    fxsr:1;
-      uint32_t    ffxsr:1;
-      uint32_t    reserved26:1;
-      uint32_t    rdtscp:1;
-      uint32_t    reserved28:1;
-      uint32_t    lm:1;
-      uint32_t    threedeenowext:1;
-      uint32_t    threedeenow:1;   /* Bit 31 */
-      uint32_t    lahf:1;          /* Bit 32 */
-      uint32_t    cmplegacy:1;
-      uint32_t    reserved3534:2;
-      uint32_t    cr8avail:1;
-      uint32_t    reserved6337:27; /* Bit 63 */
-   } bits;
-} cpuid_ext_feature_flags_t;
+/* An overall structure to cache all of the CPUID information */
+struct cpu_ident {
+	uint32_t max_cpuid;
+	uint32_t max_xcpuid;
+	uint32_t dts_pmp;
+	cpuid_version_t vers;
+	cpuid_proc_info_t info;
+	cpuid_feature_flags_t fid;
+	cpuid_vendor_string_t vend_id;
+	cpuid_brand_string_t brand_id;
+	cpuid_cache_info_t cache_info;
+	cpuid_custom_features custom;
+};
 
-void cpuid_get(unsigned n, cpuid_t *data);
-cpuid_vendor_string_t cpuid_get_vendor_string(void);
-cpuid_version_t      cpuid_get_version(void);
-cpuid_feature_flags_t cpuid_get_feature_flags(void);
-bool              cpuid_get_ext_feature_flags(cpuid_ext_feature_flags_t *f);
-bool              cpuid_is_vendor_amd(void);
-bool              cpuid_is_vendor_intel(void);
-bool              cpuid_is_family_p6(void);
-bool              cpuid_is_family_p4(void);
-bool              cpuid_is_family_opteron(void);
-void              cpuid_init(void);
+struct cpuid4_eax {
+	uint32_t	ctype:5;
+	uint32_t	level:3;
+	uint32_t	is_self_initializing:1;
+	uint32_t	is_fully_associative:1;
+	uint32_t	reserved:4;
+	uint32_t	num_threads_sharing:12;
+	uint32_t	num_cores_on_die:6;
+};
 
-#endif
+struct cpuid4_ebx {
+	uint32_t	coherency_line_size:12;
+	uint32_t	physical_line_partition:10;
+	uint32_t	ways_of_associativity:10;
+};
+
+struct cpuid4_ecx {
+	uint32_t	number_of_sets:32;
+};
+

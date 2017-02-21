@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # check to see if the correct tools are installed
-for X in wc mkisofs
+for X in wc genisoimage
 do
 	if [ "$(which $X)" = "" ]; then
 		echo "makeiso.sh error: $X is not in your path." >&2
@@ -37,9 +37,9 @@ cd cd
 echo -e "There is nothing to do here\r\r\nMemtest86+ is located on the bootsector of this CD\r\r\n" > README.TXT
 echo -e "Just boot from this CD and Memtest86+ will launch" >> README.TXT
 
-mkisofs -A "MKISOFS 1.1.2" -p "Memtest86+ 4.20" -publisher "Samuel D. <sdemeule@memtest.org>" -b boot/memtest.img -c boot/boot.catalog -V "MT410" -o memtest.iso .
-mv memtest.iso ../mt420.iso
+genisoimage -A "MKISOFS 1.1.2" -p "Memtest86+ 5.01" -publisher "Samuel D. <sdemeule@memtest.org>" -b boot/memtest.img -c boot/boot.catalog -V "MT501" -o memtest.iso .
+mv memtest.iso ../mt501.iso
 cd ..
 rm -rf cd
 
-echo "Done! Memtest86+ 4.20 ISO is mt420.iso"
+echo "Done! Memtest86+ 5.01 ISO is mt501.iso"

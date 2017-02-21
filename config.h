@@ -1,10 +1,26 @@
-/* config.h - MemTest-86  Version 3.0
+/*
+ * MemTest86+ V5 Specific code (GPL V2.0)
+ * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
+ * http://www.canardpc.com - http://www.memtest.org
+ * ------------------------------------------------
+ * config.h - MemTest-86  Version 3.3
  *
  * Compile time configuration options
  *
  * Released under version 2 of the Gnu Public License.
- * By Chris Brady, cbrady@sgi.com
+ * By Chris Brady
  */
+
+/* CONSERVATIVE_SMP - If set to 0, SMP will be enabled by default */
+/* Might be enabled in future revision after extensive testing */
+/* In all cases, SMP is disabled by defaut on server platform */
+#define CONSERVATIVE_SMP 1
+
+/* BEEP_MODE - Beep on error. Default off, Change to 1 to enable */
+#define BEEP_MODE 0
+
+/* BEEP_END_NO_ERROR - Beep at end of each pass without error. Default off, Change to 1 to enable */
+#define BEEP_END_NO_ERROR 0
 
 /* PARITY_MEM - Enables support for reporting memory parity errors */
 /*	Experimental, normally enabled */
@@ -20,18 +36,6 @@
 
 /* SERIAL_BAUD_RATE - Baud rate for the serial console */
 #define SERIAL_BAUD_RATE 9600
-
-/* START_FAIL_SAFE - Default 0 = normal. Change to 1 to always start in fail safe mode */
-#define START_FAIL_SAFE 0
-
-/* BEEP_MODE - Beep on error. Default off, Change to 1 to enable */
-#define BEEP_MODE 0
-
-/* BEEP_END_NO_ERROR - Beep at end of each pass without error. Default off, Change to 1 to enable */
-#define BEEP_END_NO_ERROR 0
-
-/* FIRST_PASS_HALF_ITERATIONS - First pass twice faster / half iterations. Change to 0 to disable */
-#define FIRST_PASS_HALF_ITERATIONS 1
 
 /* SCRN_DEBUG - extra check for SCREEN_BUFFER
  */ 

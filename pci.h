@@ -7,6 +7,7 @@ int pci_conf_write(unsigned bus, unsigned dev, unsigned fn, unsigned reg,
 	unsigned len, unsigned long value);
 int pci_init(void);
 
+#define MAKE_PCIE_ADDRESS(bus, device, function) (((bus) & 0xFF)<<20) | (((device) & 0x1F)<<15) | (((function) & 0x7)<<12)
 
 /*
  * Under PCI, each device has 256 bytes of configuration address space,

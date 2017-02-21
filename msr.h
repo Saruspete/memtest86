@@ -6,11 +6,31 @@
  * Note: the rd* operations modify the parameters directly (without using
  * pointer indirection), this allows gcc to optimize better
  */
+ 
+#define __FIXUP_ALIGN ".align 8" 
+#define __FIXUP_WORD ".quad"
+#define EFAULT	14 /* Bad address */
 
 #define rdmsr(msr,val1,val2) \
      __asm__ __volatile__("rdmsr" \
 			  : "=a" (val1), "=d" (val2) \
-			  : "c" (msr))
+			  : "c" (msr) : "edi")
+
+/*
+#define rdmsr_safe(msr,val1,val2) ({\
+     int _rc; \
+     __asm__ __volatile__( \
+         "1: rdmsr\n2:\n" \
+         ".section .fixup,\"ax\"\n" \
+         "3: movl %5,%2\n; jmp 2b\n" \
+         ".previous\n" \
+         ".section __ex_table,\"a\"\n" \
+         "   "__FIXUP_ALIGN"\n" \
+         ".previous\n" \
+         : "=a" (val1), "=d" (val2), "=&r" (_rc) \
+				 : "c" (msr), "2" (0), "i" (-EFAULT)); \
+				 	_rc; })				 	
+*/
 
 #define wrmsr(msr,val1,val2) \
      __asm__ __volatile__("wrmsr" \
@@ -58,6 +78,7 @@
 #define MSR_IA32_THERM_INTERRUPT	0x19b
 #define MSR_IA32_THERM_STATUS		0x19c
 #define MSR_IA32_MISC_ENABLE		0x1a0
+#define MSR_IA32_TEMPERATURE_TARGET		0x1a2
 
 #define MSR_IA32_DEBUGCTLMSR		0x1d9
 #define MSR_IA32_LASTBRANCHFROMIP	0x1db

@@ -1,7 +1,12 @@
-#include <stddef.h>
+/* reloc.c - MemTest-86  Version 3.3
+ *
+ * Released under version 2 of the Gnu Public License.
+ * By Eric Biederman
+ */
+
+#include "stddef.h"
 #include "stdint.h"
 #include "elf.h"
-#include <string.h>
 
 #define __ELF_NATIVE_CLASS 32
 #define ELF_MACHINE_NO_RELA 1
@@ -22,7 +27,7 @@
      bootstrap relocation instead of general-purpose relocation.  */
 #define RTLD_BOOTSTRAP
 
-struct link_map
+struct link_map 
 {
 	ElfW(Addr) l_addr;  /* Current load address */
 	ElfW(Addr) ll_addr; /* Last load address */
@@ -127,7 +132,7 @@ elf_get_dynamic_info(ElfW(Dyn) *dyn, ElfW(Addr) l_addr,
 {
 	if (! dyn)
 		return;
-
+	
 	while (dyn->d_tag != DT_NULL)
 	{
 		if (dyn->d_tag < DT_NUM)
@@ -142,8 +147,8 @@ elf_get_dynamic_info(ElfW(Dyn) *dyn, ElfW(Addr) l_addr,
 			assert (! "bad dynamic tag");
 		++dyn;
 	}
-
-	if (info[DT_PLTGOT] != NULL)
+	
+	if (info[DT_PLTGOT] != NULL) 
 		info[DT_PLTGOT]->d_un.d_ptr += l_addr;
 	if (info[DT_STRTAB] != NULL)
 		info[DT_STRTAB]->d_un.d_ptr += l_addr;
@@ -194,7 +199,7 @@ elf_dynamic_do_rel (struct link_map *map,
 
 	const ElfW(Sym) *const symtab =
 		(const void *) map->l_info[DT_SYMTAB]->d_un.d_ptr;
-
+	
 	for (; r < end; ++r) {
 		elf_machine_rel (map, r, &symtab[ELFW(R_SYM) (r->r_info)],
 			(void *) (map->l_addr + r->r_offset));
@@ -221,32 +226,32 @@ void _dl_start(void)
 
 	/* Figure out the run-time load address of the dynamic linker itself.  */
 	last_load_address = map.l_addr = elf_machine_load_address();
-
+	
 	/* Read our own dynamic section and fill in the info array.  */
 	map.l_ld = (void *)map.l_addr + elf_machine_dynamic();
 
 	elf_get_dynamic_info (map.l_ld, map.l_addr - map.ll_addr, map.l_info);
 
 	/* Relocate ourselves so we can do normal function calls and
-	 * data access using the global offset table.
+	 * data access using the global offset table.  
 	 */
 #if !ELF_MACHINE_NO_REL
-	elf_dynamic_do_rel(&map,
+	elf_dynamic_do_rel(&map, 
 		map.l_info[DT_REL]->d_un.d_ptr,
 		map.l_info[DT_RELSZ]->d_un.d_val);
 	if (map.l_info[DT_PLTREL]->d_un.d_val == DT_REL) {
-		elf_dynamic_do_rel(&map,
+		elf_dynamic_do_rel(&map, 
 			map.l_info[DT_JMPREL]->d_un.d_ptr,
 			map.l_info[DT_PLTRELSZ]->d_un.d_val);
 	}
 #endif
 
 #if !ELF_MACHINE_NO_RELA
-	elf_dynamic_do_rela(&map,
+	elf_dynamic_do_rela(&map, 
 		map.l_info[DT_RELA]->d_un.d_ptr,
 		map.l_info[DT_RELASZ]->d_un.d_val);
 	if (map.l_info[DT_PLTREL]->d_un.d_val == DT_RELA) {
-		elf_dynamic_do_rela(&map,
+		elf_dynamic_do_rela(&map, 
 			map.l_info[DT_JMPREL]->d_un.d_ptr,
 			map.l_info[DT_PLTRELSZ]->d_un.d_val);
 	}

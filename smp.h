@@ -7,10 +7,9 @@
 #define _SMP_H_
 #include "stdint.h"
 #include "defs.h"
-#define MAX_CPUS 16 // "16 CPUs ought to be enough for everybody."
+#define MAX_CPUS 32
 
-
-#define FPSignature ('_' | 'M' << 8 | 'P' << 16 | '_' << 24)
+#define FPSignature ('_' | ('M' << 8) | ('P' << 16) | ('_' << 24))
 
 typedef struct {
    uint32_t signature;   // "_MP_"
@@ -21,7 +20,7 @@ typedef struct {
    uint8_t  feature[5];
 } floating_pointer_struct_t;
 
-#define MPCSignature ('P' | 'C' << 8 | 'M' << 16 | 'P' << 24)
+#define MPCSignature ('P' | ('C' << 8) | ('M' << 16) | ('P' << 24))
 typedef struct {
    uint32_t signature;   // "PCMP"
    uint16_t length;
@@ -59,20 +58,11 @@ typedef struct {
    uint32_t reserved[2];
 } mp_processor_entry_t;
 
-
 typedef struct {
    uint8_t type;   // has value MP_BUS
    uint8_t busid;
    char  bustype[6];
 } mp_bus_entry_t;
-
-#define BUSTYPE_EISA    "EISA"
-#define BUSTYPE_ISA     "ISA"
-#define BUSTYPE_INTERN  "INTERN"
-#define BUSTYPE_MCA     "MCA"
-#define BUSTYPE_VL      "VL"
-#define BUSTYPE_PCI     "PCI"
-#define BUSTYPE_PCMCIA  "PCMCIA"
 
 /* We don't understand the others */
 
@@ -116,6 +106,39 @@ typedef struct {
 #define MP_APIC_ALL     0xFF
    uint8_t  destapiclint;
 } mp_local_interrupt_entry_t;
+
+#define RSDPSignature ('R' | ('S' << 8) | ('D' << 16) | (' ' << 24))
+typedef struct {
+   char signature[8];   // "RSD "
+   uint8_t  checksum;
+   char oemid[6];
+   uint8_t revision; 
+   uint32_t rsdt;
+   uint32_t length;
+   uint32_t xrsdt[2];
+   uint8_t  xsum;
+} rsdp_t;
+
+#define RSDTSignature ('R' | ('S' << 8) | ('D' << 16) | ('T' << 24))
+#define XSDTSignature ('X' | ('S' << 8) | ('D' << 16) | ('T' << 24))
+typedef struct {
+   char signature[4];   // "RSDT"
+   uint32_t length;
+   uint8_t revision; 
+   uint8_t  checksum;
+   char oemid[18];
+   char cid[4];
+   char cver[4];
+} rsdt_t;
+
+#define MADTSignature ('A' | ('P' << 8) | ('I' << 16) | ('C' << 24))
+typedef struct {
+   uint8_t type; 
+   uint8_t length;
+   uint8_t acpi_id;
+   uint8_t apic_id;       /* Local APIC number */
+   uint32_t enabled;
+} madt_processor_entry_t;
 
 /* APIC definitions */
 /*
@@ -169,7 +192,6 @@ typedef uint32_t apic_register_t[4];
 
 extern volatile apic_register_t *APIC;
 
-unsigned smp_num_cpus();
 unsigned smp_my_cpu_num();
 
 void smp_init_bsp(void);
@@ -177,6 +199,30 @@ void smp_init_aps(void);
 
 void smp_boot_ap(unsigned cpu_num);
 void smp_ap_booted(unsigned cpu_num);
+
+typedef struct {
+        unsigned int slock;
+} spinlock_t;
+
+struct barrier_s
+{
+        spinlock_t mutex;
+        spinlock_t lck;
+        int maxproc;
+        volatile int count;
+        spinlock_t st1;
+        spinlock_t st2;
+        spinlock_t s_lck;
+        int s_maxproc;
+        volatile int s_count;
+        spinlock_t s_st1;
+        spinlock_t s_st2;
+};
+
+void barrier();
+void s_barrier();
+void barrier_init(int max);
+void s_barrier_init(int max);
 
 static inline void
 __GET_CPUID(int ax, uint32_t *regs)
@@ -239,24 +285,79 @@ static inline uint64_t __GET_MSR(int cx)
 } while (0)
 #define OUTB(port, val) __GCC_OUT(b, b, port, val)
 
-typedef struct {
-        unsigned int slock;
-} spinlock_t;
-
-static inline void spin_lock(volatile spinlock_t *lock)
+static inline void spin_wait(spinlock_t *lck)
 {
-        asm volatile("\n1:\t"
-                     " ; lock;decb %0\n\t"
-                     "jns 3f\n"
-                     "2:\t"
-                     "rep;nop\n\t"
-                     "cmpb $0,%0\n\t"
-                     "jle 2b\n\t"
-                     "jmp 1b\n"
-                     "3:\n\t"
-                     : "+m" (lock->slock) : : "memory");
+	if (cpu_id.fid.bits.mon) {
+	    /* Use monitor/mwait for a low power, low contention spin */
+            asm volatile(
+		"movl $0,%%ecx\n\t"
+		"movl %%ecx, %%edx\n\t"
+		"1:\n\t"
+		"movl %%edi,%%eax\n\t"
+		"monitor\n\t"
+		"cmpb $0,(%%edi)\n\t"
+		"jne 2f\n\t"
+		"movl %%ecx, %%eax\n\t"
+		"mwait\n\t"
+		"jmp 1b\n"
+		"2:"
+                : : "D" (lck): "%eax", "%ecx", "%edx"
+	    );
+	} else {
+	    /* No monitor/mwait so just spin with a lot of nop's */
+       	    int inc = 0x400;
+            asm volatile(
+		"1:\t"
+		"cmpb $0,%1\n\t"
+		"jne 2f\n\t"
+		"rep ; nop\n\t"
+		"jmp 1b\n"
+		"2:"
+		: : "c" (inc), "m" (lck->slock): "memory"
+	    );
+	}
 }
-static inline void spin_unlock(volatile spinlock_t *lock)
+
+static inline void spin_lock(spinlock_t *lck)
+{
+	if (cpu_id.fid.bits.mon) {
+	    /* Use monitor/mwait for a low power, low contention spin */
+            asm volatile(
+		"\n1:\t"
+		" ; lock;decb (%%edi)\n\t"
+		"jns 3f\n"
+		"movl $0,%%ecx\n\t"
+		"movl %%ecx, %%edx\n\t"
+		"2:\t"
+		"movl %%edi,%%eax\n\t"
+		"monitor\n\t"
+		"movl %%ecx, %%eax\n\t"
+		"mwait\n\t"
+		"cmpb $0,(%%edi)\n\t"
+		"jle 2b\n\t"
+		"jmp 1b\n"
+		"3:\n\t"
+		: : "D" (lck): "%eax", "%ecx", "%edx"
+	    );
+	} else {
+	    /* No monitor/mwait so just spin with a lot of nop's */
+            int inc = 0x400;
+            asm volatile(
+		"\n1:\t"
+		" ; lock;decb %0\n\t"
+		"jns 3f\n"
+		"2:\t"
+		"rep;nop\n\t"
+		"cmpb $0,%0\n\t"
+		"jle 2b\n\t"
+		"jmp 1b\n"
+		"3:\n\t"
+		: "+m" (lck->slock) : "c" (inc) : "memory"
+	    );
+	}
+}
+
+static inline void spin_unlock(spinlock_t *lock)
 {
         asm volatile("movb $1,%0" : "+m" (lock->slock) :: "memory");
 }

@@ -84,7 +84,6 @@ __OUTS(l)
  *  - can't use it inside a inline function (it will never be true)
  *  - you don't have to worry about side effects within the __builtin..
  */
- 
 #define outb(val,port) \
 ((__builtin_constant_p((port)) && (port) < 256) ? \
 	__outbc((val),(port)) : \

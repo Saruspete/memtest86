@@ -1,30 +1,25 @@
-/* lib.c - MemTest-86  Version 3.0
+/* lib.c - MemTest-86  Version 3.4
  *
  * Released under version 2 of the Gnu Public License.
- * By Chris Brady, cbrady@sgi.com
- * ----------------------------------------------------
- * MemTest86+ V4.00 Specific code (GPL V2.0)
- * By Samuel DEMEULEMEESTER, memtest@memtest.org
- * http://www.canardplus.com - http://www.memtest.org
-*/
- 
+ * By Chris Brady
+ */
 #include "io.h"
 #include "serial.h"
 #include "test.h"
 #include "config.h"
 #include "screen_buffer.h"
+#include "stdint.h"
+#include "cpuid.h"
 #include "smp.h"
 
-#define NULL 0
 
 int slock = 0, lsr = 0;
 short serial_cons = SERIAL_CONSOLE_DEFAULT;
-
 #if SERIAL_TTY != 0 && SERIAL_TTY != 1
 #error Bad SERIAL_TTY. Only ttyS0 and ttyS1 are supported.
 #endif
 short serial_tty = SERIAL_TTY;
-const short serial_base_ports[] = {0x3f8, 0x2f8, 0x3e8, 0x2e8};
+const short serial_base_ports[] = {0x3f8, 0x2f8};
 
 #if ((115200%SERIAL_BAUD_RATE) != 0)
 #error Bad default baud rate
@@ -33,53 +28,55 @@ int serial_baud_rate = SERIAL_BAUD_RATE;
 unsigned char serial_parity = 0;
 unsigned char serial_bits = 8;
 
-char buf[18];
-
 struct ascii_map_str {
-	int ascii;
-	int keycode;
+        int ascii;
+        int keycode;
 };
 
-char *codes[] = {
-	"  Divide",
-	"   Debug",
-	"     NMI",
-	"  Brkpnt",
-	"Overflow",
-	"   Bound",
-	"  Inv_Op",
-	" No_Math",
-	"Double_Fault",
-	"Seg_Over",
-	" Inv_TSS",
-	"  Seg_NP",
-	"Stack_Fault",
-	"Gen_Prot",
-	"Page_Fault",
-	"   Resvd",
-	"     FPE",
-	"Alignment",
-	" Mch_Chk",
-	"SIMD FPE"
-};
+inline void reboot(void)
+{
+	
+	/* tell the BIOS to do a cold start */
+	*((unsigned short *)0x472) = 0x0;
+	
+	while(1)
+	{
+		outb(0xFE, 0x64);
+		outb(0x02, 0xcf9); /* reset that doesn't rely on the keyboard controller */
+		outb(0x04, 0xcf9);
+		outb(0x0E, 0xcf9);
+	}
+}
 
-struct eregs {
-	ulong ss;
-	ulong ds;
-	ulong esp;
-	ulong ebp;
-	ulong esi;
-	ulong edi;
-	ulong edx;
-	ulong ecx;
-	ulong ebx;
-	ulong eax;
-	ulong vect;
-	ulong code;
-	ulong eip;
-	ulong cs;
-	ulong eflag;
-};
+int strlen(char * string){
+	int i=0;
+	while(*string++){i++;};
+	return i;
+}
+
+int strstr(char *haystack, char * needle)
+{
+	int i=0,j=0;
+	int here=0;
+	while(1){
+		if(needle[i]==haystack[j])
+		{
+			if(here==0)
+				here=j;
+				i++;j++;
+				if(i>=strlen(needle))
+				{
+					return here;
+				}
+				if(j>=strlen(haystack))
+				{
+					return -1;
+				}
+		} else {
+			j++;i=0;here=0;
+		}
+	}
+}
 
 int memcmp(const void *s1, const void *s2, ulong count)
 {
@@ -93,19 +90,6 @@ int memcmp(const void *s1, const void *s2, ulong count)
 	return 0;
 }
 
-void memcpy (void *dst, void *src, int len)
-{
-	char *s = (char*)src;
-	char *d = (char*)dst;
-	int i;
-
-	if (len <= 0) {
-		return;
-	}
-	for (i = 0 ; i < len; i++) {
-		*d++ = *s++;
-	} 
-}
 int strncmp(const char *s1, const char *s2, ulong n) {
 	signed char res = 0;
 	while (n) {
@@ -183,12 +167,11 @@ unsigned long simple_strtoul(const char *cp, char **endp, unsigned int base) {
 	return result;
 }
 
-
 /*
  * Scroll the error message area of the screen as needed
  * Starts at line LINE_SCROLL and ends at line 23
  */
-void scroll(void)
+void scroll(void) 
 {
 	int i, j;
 	char *s, tmp;
@@ -201,23 +184,23 @@ void scroll(void)
 		while (slock) {
 			check_input();
 		}
-		for (i=LINE_SCROLL; i<23; i++) {
+	        for (i=LINE_SCROLL; i<23; i++) {
 			s = (char *)(SCREEN_ADR + ((i+1) * 160));
 			for (j=0; j<160; j+=2, s+=2) {
 				*(s-160) = *s;
-				tmp = get_scrn_buf(i+1, j/2);
-				set_scrn_buf(i, j/2, tmp);
+                                tmp = get_scrn_buf(i+1, j/2);
+                                set_scrn_buf(i, j/2, tmp);
 			}
 		}
 		/* Clear the newly opened line */
 		s = (char *)(SCREEN_ADR + (23 * 160));
 		for (j=0; j<80; j++) {
 			*s = ' ';
-			set_scrn_buf(23, j, ' ');
+                        set_scrn_buf(23, j, ' ');
 			s += 2;
 		}
-		tty_print_region(LINE_SCROLL, 0, 23, 79);
-	}
+                tty_print_region(LINE_SCROLL, 0, 23, 79);
+        }
 }
 
 /*
@@ -236,6 +219,17 @@ void clear_scroll(void)
 }
 
 /*
+ * Place a single character on screen
+ */
+void cplace(int y, int x, const char c)
+{
+	char *dptr;
+
+	dptr = (char *)(SCREEN_ADR + (160*y) + (2*x));
+	*dptr = c;
+}
+
+/*
  * Print characters on screen
  */
 void cprint(int y, int x, const char *text)
@@ -247,37 +241,50 @@ void cprint(int y, int x, const char *text)
 	for (i=0; text[i]; i++) {
 		*dptr = text[i];
 		dptr += 2;
-	}
-	tty_print_line(y, x, text);
+        }
+        tty_print_line(y, x, text);
 }
 
-void itoa(char s[], int n)
+void itoa(char s[], int n) 
 {
-	int i, sign;
+  int i, sign;
 
-	if((sign = n) < 0)
-		n = -n;
-	i=0;
-	do {
-		s[i++] = n % 10 + '0';
-	} while ((n /= 10) > 0);
-	if(sign < 0)
-		s[i++] = '-';
-	s[i] = '\0';
-	reverse(s);
+  if((sign = n) < 0)
+    n = -n;
+  i=0;
+  do {
+    s[i++] = n % 10 + '0';
+  } while ((n /= 10) > 0);
+  if(sign < 0)
+    s[i++] = '-';
+  s[i] = '\0';
+  reverse(s);
 }
 
 void reverse(char s[])
 {
-	int c, i, j;
-	for(j = 0; s[j] != 0; j++)
-		;
+  int c, i, j;
+  for(j = 0; s[j] != 0; j++)
+	  ;
 
-	for(i=0, j = j - 1; i < j; i++, j--) {
-		c = s[i];
-		s[i] = s[j];
-		s[j] = c;
+  for(i=0, j = j - 1; i < j; i++, j--) {
+    c = s[i];
+    s[i] = s[j];
+    s[j] = c;
+  }
+}
+void memcpy (void *dst, void *src, int len)
+{
+	char *s = (char*)src;
+	char *d = (char*)dst;
+	int i;
+
+	if (len <= 0) {
+		return;
 	}
+	for (i = 0 ; i < len; i++) {
+		*d++ = *s++;
+	} 
 }
 
 /*
@@ -311,6 +318,7 @@ void dprint(int y, int x, ulong val, int len, int right)
 {
 	ulong j, k;
 	int i, flag=0;
+	char buf[18];
 
 	if (val > 999999999 || len > 9) {
 		return;
@@ -343,16 +351,16 @@ void dprint(int y, int x, ulong val, int len, int right)
 					continue;
 				}
 				if (k == 0 && flag == 0) {
-					continue;
+					continue;				
 				}
 				buf[i++] = k + '0';
 				val -= k * j;
 			} else {
-				if (flag == 0 &&  i < len-1) {
-					buf[i++] = '0';
-				} else {
-					buf[i++] = ' ';
-				}
+                                if (flag == 0 &&  i < len-1) {
+                                        buf[i++] = '0';
+                                } else {
+                                        buf[i++] = ' ';
+                                }
 			}
 			flag++;
 		}
@@ -361,56 +369,38 @@ void dprint(int y, int x, ulong val, int len, int right)
 	cprint(y,x,buf);
 }
 
-
-/*
- * Get_number of digits
- */
-int getnum(ulong val)
-{
-	int len = 0;
-	int i = 1;
-	
-	while(i <= val)
-	{
-		len++;
-		i *= 10;
-	}
-
-	return len;
-		
-}
-
 /*
  * Print a hex number on screen at least digits long
  */
 void hprint2(int y,int x, unsigned long val, int digits)
 {
-        unsigned long j;
-        int i, idx, flag = 0;
+	unsigned long j;
+	int i, idx, flag = 0;
+	char buf[18];
 
         for (i=0, idx=0; i<8; i++) {
                 j = val >> (28 - (4 * i));
-                j &= 0xf;
-                if (j < 10) {
-                        if (flag || j || i == 7) {
-                                buf[idx++] = j + '0';
-                                flag++;
-                        } else {
-                                buf[idx++] = '0';
-                        }
-                } else {
-                        buf[idx++] = j + 'a' - 10;
-                        flag++;
-                }
+		j &= 0xf;
+		if (j < 10) {
+			if (flag || j || i == 7) {
+		                buf[idx++] = j + '0';
+				flag++;
+			} else {
+				buf[idx++] = '0';
+			}
+		} else {
+			buf[idx++] = j + 'a' - 10;
+			flag++;
+		}
         }
-        if (digits > 8) {
-                digits = 8;
-        }
-        if (flag > digits) {
-                digits = flag;
-        }
+	if (digits > 8) {
+		digits = 8;
+	}
+	if (flag > digits) {
+		digits = flag;
+	}
         buf[idx] = 0;
-        cprint(y,x,buf + (idx - digits));
+	cprint(y,x,buf + (idx - digits));
 }
 
 /*
@@ -420,7 +410,7 @@ void hprint3(int y,int x, unsigned long val, int digits)
 {
 	unsigned long j;
 	int i, idx, flag = 0;
-
+	char buf[18];
 
 	for (i=0, idx=0; i<digits; i++) {
 		j = 0xf & val;
@@ -455,7 +445,7 @@ void hprint(int y, int x, unsigned long val)
  */
 void xprint(int y,int x, ulong val)
 {
-	ulong j;
+        ulong j;
 
 	j = (val & 0xffc00000) >> 20;
 	dprint(y, x, j, 4, 0);
@@ -467,12 +457,54 @@ void xprint(int y,int x, ulong val)
 	dprint(y, x+10, j, 4, 0);
 }
 
+char *codes[] = {
+	"  Divide",
+	"   Debug",
+	"     NMI",
+	"  Brkpnt",
+	"Overflow",
+	"   Bound",
+	"  Inv_Op",
+	" No_Math",
+	"Double_Fault",
+	"Seg_Over",
+	" Inv_TSS",
+	"  Seg_NP",
+	"Stack_Fault",
+	"Gen_Prot",
+	"Page_Fault",
+	"   Resvd",
+	"     FPE",
+	"Alignment",
+	" Mch_Chk",
+	"SIMD FPE"
+};
+
+struct eregs {
+	ulong ss;
+	ulong ds;
+	ulong esp;
+	ulong ebp;
+	ulong esi;
+	ulong edi;
+	ulong edx;
+	ulong ecx;
+	ulong ebx;
+	ulong eax;
+	ulong vect;
+	ulong code;
+	ulong eip;
+	ulong cs;
+	ulong eflag;
+};
+	
 /* Handle an interrupt */
 void inter(struct eregs *trap_regs)
 {
 	int i, line;
 	unsigned char *pp;
 	ulong address = 0;
+	int my_cpu_num = smp_my_cpu_num();
 
 	/* Get the page fault address */
 	if (trap_regs->vect == 14) {
@@ -488,13 +520,14 @@ void inter(struct eregs *trap_regs)
 #endif
 
 	/* clear scrolling region */
-	pp=(unsigned char *)(SCREEN_ADR+(2*80*(LINE_SCROLL-2)));
-	for(i=0; i<2*80*(24-LINE_SCROLL-2); i++, pp+=2) {
-		*pp = ' ';
-	}
+        pp=(unsigned char *)(SCREEN_ADR+(2*80*(LINE_SCROLL-2)));
+        for(i=0; i<2*80*(24-LINE_SCROLL-2); i++, pp+=2) {
+                *pp = ' ';
+        }
 	line = LINE_SCROLL-2;
 
-	cprint(line, 0, "Unexpected Interrupt - Halting");
+	cprint(line, 0, "Unexpected Interrupt - Halting CPU");
+	dprint(line, COL_MID + 4, my_cpu_num, 2, 1);
 	cprint(line+2, 0, " Type: ");
 	if (trap_regs->vect <= 19) {
 		cprint(line+2, 7, codes[trap_regs->vect]);
@@ -509,6 +542,10 @@ void inter(struct eregs *trap_regs)
 	hprint(line+5, 7, trap_regs->eflag);
 	cprint(line+6, 0, " Code: ");
 	hprint(line+6, 7, trap_regs->code);
+	cprint(line+7, 0, "   DS: ");
+	hprint(line+7, 7, trap_regs->ds);
+	cprint(line+8, 0, "   SS: ");
+	hprint(line+8, 7, trap_regs->ss);
 	if (trap_regs->vect == 14) {
 		/* Page fault address */
 		cprint(line+7, 0, " Addr: ");
@@ -531,21 +568,18 @@ void inter(struct eregs *trap_regs)
 	hprint(line+8, 25, trap_regs->ebp);
 	cprint(line+9, 20, "esp: ");
 	hprint(line+9, 25, trap_regs->esp);
-	cprint(line+7, 0, "   DS: ");
-	hprint(line+7, 7, trap_regs->ds);
-	cprint(line+8, 0, "   SS: ");
-	hprint(line+8, 7, trap_regs->ss);
+
 	cprint(line+1, 38, "Stack:");
-	for (i=0; i<12; i++) {
+	for (i=0; i<10; i++) {
 		hprint(line+2+i, 38, trap_regs->esp+(4*i));
 		hprint(line+2+i, 47, *(ulong*)(trap_regs->esp+(4*i)));
-		hprint(line+2+i, 57, trap_regs->esp+(4*(i+12)));
-		hprint(line+2+i, 66, *(ulong*)(trap_regs->esp+(4*(i+12))));
+		hprint(line+2+i, 57, trap_regs->esp+(4*(i+10)));
+		hprint(line+2+i, 66, *(ulong*)(trap_regs->esp+(4*(i+10))));
 	}
 
 	cprint(line+11, 0, "CS:EIP:                          ");
 	pp = (unsigned char *)trap_regs->eip;
-	for(i = 0; i < 10; i++) {
+	for(i = 0; i < 9; i++) {
 		hprint2(line+11, 8+(3*i), pp[i], 2);
 	}
 
@@ -554,22 +588,14 @@ void inter(struct eregs *trap_regs)
 	}
 }
 
-void set_cache(int val)
+void set_cache(int val) 
 {
-	extern struct cpu_ident cpu_id;
-	/* 386's don't have a cache */
-	if ((cpu_id.cpuid < 1) && (cpu_id.type == 3)) {
-		cprint(LINE_INFO, COL_CACHE, "none");
-		return;
-	}
 	switch(val) {
 	case 0:
-		cache_off();
-		cprint(LINE_INFO, COL_CACHE, "off");
+		cache_off();	
 		break;
 	case 1:
 		cache_on();
-		cprint(LINE_INFO, COL_CACHE, " on");
 		break;
 	}
 }
@@ -603,13 +629,10 @@ void check_input(void)
 
 	if ((c = get_key())) {
 		switch(c & 0x7f) {
-		case 1:
+		case 1:	
 			/* "ESC" key was pressed, bail out.  */
 			cprint(LINE_RANGE, COL_MID+23, "Halting... ");
-
-			/* tell the BIOS to do a warm start */
-			*((unsigned short *)0x472) = 0x1234;
-			outb(0xfe,0x64);
+			reboot();
 			break;
 		case 46:
 			/* c - Configure */
@@ -635,9 +658,9 @@ void check_input(void)
 
 void footer()
 {
-	cprint(24, 0, "(ESC)Reboot  (c)configuration  (SP)scroll_lock  (CR)scroll_unlock");
+	cprint(24, 0, "(ESC)exit  (c)configuration  (SP)scroll_lock  (CR)scroll_unlock");
 	if (slock) {
-		cprint(24, 74, "LOCKED");
+		cprint(24, 74, "Locked");
 	} else {
 		cprint(24, 74, "      ");
 	}
@@ -657,7 +680,7 @@ ulong getval(int x, int y, int result_shift)
 		buf[i] = ' ';
 	}
 	buf[sizeof(buf)/sizeof(buf[0]) -1] = '\0';
-
+	
 	wait_keyup();
 	done = 0;
 	n = 0;
@@ -711,7 +734,7 @@ ulong getval(int x, int y, int result_shift)
 		}
 		/* Don't allow anything to be entered after a suffix */
 		if (n > 0 && (
-			(buf[n-1] == 'p') || (buf[n-1] == 'g') ||
+			(buf[n-1] == 'p') || (buf[n-1] == 'g') || 
 			(buf[n-1] == 'm') || (buf[n-1] == 'k'))) {
 			buf[n] = ' ';
 		}
@@ -743,7 +766,7 @@ ulong getval(int x, int y, int result_shift)
 	shift -= result_shift;
 
 	/* Compute our current value */
-	val = simple_strtoul(buf, NULL, base);
+	val = simple_strtoul(buf, 0, base);
 	if (shift > 0) {
 		if (shift >= 32) {
 			val = 0xffffffff;
@@ -765,7 +788,7 @@ void ttyprint(int y, int x, const char *p)
 {
 	static char sx[3];
 	static char sy[3];
-
+	
 	sx[0]='\0';
 	sy[0]='\0';
 	x++; y++;
@@ -779,11 +802,10 @@ void ttyprint(int y, int x, const char *p)
 	serial_echo_print(p);
 }
 
-
 void serial_echo_init(void)
 {
 	int comstat, hi, lo, serial_div;
-	unsigned char lcr;
+	unsigned char lcr;	
 
 	/* read the Divisor Latch */
 	comstat = serial_echo_inb(UART_LCR);
@@ -801,17 +823,35 @@ void serial_echo_init(void)
 	serial_echo_outb((serial_div >> 8) & 0xff, UART_DLM);
 	serial_echo_outb(lcr, UART_LCR); /* Done with divisor */
 
-
 	/* Prior to disabling interrupts, read the LSR and RBR
 	 * registers */
 	comstat = serial_echo_inb(UART_LSR); /* COM? LSR */
 	comstat = serial_echo_inb(UART_RX);	/* COM? RBR */
 	serial_echo_outb(0x00, UART_IER); /* Disable all interrupts */
 
-	clear_screen_buf();
+        clear_screen_buf();
 
 	return;
 }
+
+/*
+ * Get_number of digits
+ */
+int getnum(ulong val)
+{
+	int len = 0;
+	int i = 1;
+	
+	while(i <= val)
+	{
+		len++;
+		i *= 10;
+	}
+
+	return len;
+		
+}
+
 
 void serial_echo_print(const char *p)
 {
@@ -841,9 +881,9 @@ void serial_echo_print(const char *p)
  */
 struct ascii_map_str ser_map[] =
 /*ascii keycode     ascii  keycode*/
-{
+{ 
   /* Special cases come first so I can leave
-   * their "normal" mapping in the table,
+   * their ``normal'' mapping in the table,
    * without it being activated.
    */
   {  27,   0x01}, /* ^[/ESC -> ESC  */
@@ -1026,7 +1066,6 @@ void wait_keyup( void ) {
 	}
 }
 
-
 /*
  * Handles "console=<param>" command line option
  *
@@ -1053,8 +1092,8 @@ void serial_console_setup(char *param)
 	if (option == param)
 		return;   /* there were no digits */
 
-	if (tty > 3)
-		return;   /* only ttyS0 to ttyS3 supported */
+	if (tty > 1)
+		return;   /* only ttyS0 and ttyS1 supported */
 
 	if (*option == '\0' || *option == ' ')
 		goto save_tty; /* no options given, just ttyS? */
@@ -1102,76 +1141,59 @@ void serial_console_setup(char *param)
 
 	end++;
 
-	if (*end != '\0' && *end != ' ')
+	if (*end != '\0' || *end != ' ')
 		return;  /* garbage at the end */
 
 	serial_bits = bits;
- save_parity:
+	save_parity:
 	serial_parity = parity;
- save_baud_rate:
+	save_baud_rate:
 	serial_baud_rate = (int) baud_rate;
- save_tty:
+  save_tty:
 	serial_tty = (short) tty;
 	serial_cons = 1;
 }
 
-
-#ifdef LP
-#define DATA            0x00
-#define STATUS          0x01
-#define CONTROL         0x02
-
-#define LP_PBUSY        0x80  /* inverted input, active high */
-#define LP_PERRORP      0x08  /* unchanged input, active low */
-
-#define LP_PSELECP      0x08  /* inverted output, active low */
-#define LP_PINITP       0x04  /* unchanged output, active low */
-#define LP_PSTROBE      0x01  /* short high output on raising edge */
-
-#define DELAY 0x10c6ul
-
-void lp_wait(ulong xloops)
+/* Get a comma seperated list of numbers */
+void get_list(int x, int y, int len, char *buf)
 {
-	int d0;
-	__asm__("mull %0"
-		:"=d" (xloops), "=&a" (d0)
-		:"1" (xloops),"0" (current_cpu_data.loops_per_sec));
-	__delay(xloops);
-}
-static void __delay(ulong loops)
-{
-	int d0;
-	__asm__ __volatile__(
-		"\tjmp 1f\n"
-		".align 16\n"
-		"1:\tjmp 2f\n"
-		".align 16\n"
-		"2:\tdecl %0\n\tjns 2b"
-		:"=&a" (d0)
-		:"0" (loops));
-}
+	int c, n = 0;
 
-put_lp(char c, short port)
-{
-	unsigned char status;
-
-	/* Wait for printer to be ready */
-	while (1) {
-		status = inb(STATUS(port));
-		if (status & LP_PERRORP) {
-			if (status & LP_PBUSY) {
-				break;
+	len--;
+	wait_keyup();
+	while(1) {
+		/* Read a new character and process it */
+		c = get_key();
+		switch(c) {
+		    case 0x1c: /* CR */
+			/* If something has been entered we are done */
+			if(n) {
+			    buf[n] = 0;
+			    return;
 			}
+			break;
+		    case 0x0e: /* BS */
+			if (n > 0) {
+				n -= 1;
+				buf[n] = ' ';
+			}
+			break;
+		    case 0x0B: buf[n++] = '0'; break;
+		    case 0x02: buf[n++] = '1'; break;
+		    case 0x03: buf[n++] = '2'; break;
+		    case 0x04: buf[n++] = '3'; break;
+		    case 0x05: buf[n++] = '4'; break;
+		    case 0x06: buf[n++] = '5'; break;
+		    case 0x07: buf[n++] = '6'; break;
+		    case 0x08: buf[n++] = '7'; break;
+		    case 0x09: buf[n++] = '8'; break;
+		    case 0x0a: buf[n++] = '9'; break;
+		    case 0x33: buf[n++] = ','; break;
+		}
+		cprint(x, y, buf);
+		if (n >= len) {
+		   buf[n] = 0;
+		   return;
 		}
 	}
-
-	outb(d, DATA(c));
-	lp_wait(DELAY);
-	outb((LP_PSELECP | LP_PINITP | LP_PSTROBE), CONTROL(port));
-	lp_wait(DELAY);
-	outb((LP_PSELECP | LP_PINITP), CONTROL(port));
-	lp_wait(DELAY);
 }
-
-#endif
-

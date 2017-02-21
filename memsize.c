@@ -10,34 +10,37 @@
 
 short e820_nr;
 short memsz_mode = SZ_MODE_BIOS;
-short firmware = FIRMWARE_UNKNOWN;
 
 static ulong alt_mem_k;
 static ulong ext_mem_k;
 static struct e820entry e820[E820MAX];
 
-extern ulong p1, p2;
-extern volatile ulong *p;
+ulong p1, p2;
+ulong *p;
 
 static void sort_pmap(void);
-static int check_ram(void);
-static void memsize_bios(void);
+//static void memsize_bios(void);
 static void memsize_820(void);
 static void memsize_801(void);
 static int sanitize_e820_map(struct e820entry *orig_map,
-	struct e820entry *new_bios, short old_nr);
+struct e820entry *new_bios, short old_nr);
 static void memsize_linuxbios();
-static void memsize_probe(void);
-static int check_ram(void);
 
 /*
  * Find out how much memory there is.
  */
 void mem_size(void)
 {
-	int i;
-	v->reserved_pages = 0;
+	int i, flag=0;
 	v->test_pages = 0;
+
+	/* Get the memory size from the BIOS */
+        /* Determine the memory map */
+	if (query_linuxbios()) {
+		flag = 1;
+	} else if (query_pcbios()) {
+		flag = 2;
+	}
 
 	/* On the first time thru only */
 	/* Make a copy of the memory info table so that we can re-evaluate */
@@ -52,35 +55,18 @@ void mem_size(void)
 			e820[i].type = mem_info.e820[i].type;
 		}
 	}
-
-	switch (memsz_mode) {
-	case SZ_MODE_BIOS:
-		/* Get the memory size from the BIOS */
-		memsize_bios();
-		break;
-	case SZ_MODE_PROBE:
-		/* Probe to find memory */
-		memsize_probe();
-		cprint(LINE_INFO, COL_MMAP, "Probed");
-		break;
+	if (flag == 1) {
+		memsize_linuxbios();
+	} else if (flag == 2) {
+		memsize_820();
 	}
+
 	/* Guarantee that pmap entries are in ascending order */
 	sort_pmap();
 	v->plim_lower = 0;
 	v->plim_upper = v->pmap[v->msegs-1].end;
 
 	adj_mem();
-	aprint(LINE_INFO, COL_RESERVED, v->reserved_pages);
-}
-
-static void memsize_bios()
-{
-	if (firmware == FIRMWARE_PCBIOS) {
-		memsize_820();
-	}
-	else if (firmware == FIRMWARE_LINUXBIOS) {
-		memsize_linuxbios();
-	}
 }
 
 static void sort_pmap(void)
@@ -114,6 +100,7 @@ static void memsize_linuxbios(void)
 	n = 0;
 	for (i=0; i < e820_nr; i++) {
 		unsigned long long end;
+
 		if (e820[i].type != E820_RAM) {
 			continue;
 		}
@@ -125,12 +112,13 @@ static void memsize_linuxbios(void)
 		n++;
 	}
 	v->msegs = n;
-	cprint(LINE_INFO, COL_MMAP, "LxBIOS");
 }
 static void memsize_820()
 {
 	int i, n, nr;
 	struct e820entry nm[E820MAX];
+	unsigned long long start;
+	unsigned long long end;
 
 	/* Clean up, adjust and copy the BIOS-supplied E820-map. */
 	nr = sanitize_e820_map(e820, nm, e820_nr);
@@ -145,8 +133,6 @@ static void memsize_820()
 	n = 0;
 	for (i=0; i<nr; i++) {
 		if (nm[i].type == E820_RAM || nm[i].type == E820_ACPI) {
-			unsigned long long start;
-			unsigned long long end;
 			start = nm[i].addr;
 			end = start + nm[i].size;
 
@@ -164,12 +150,18 @@ static void memsize_820()
 			v->pmap[n].end = end >> 12;
 			v->test_pages += v->pmap[n].end - v->pmap[n].start;
 			n++;
-		} else if (nm[i].type == E820_NVS) {
-			v->reserved_pages += nm[i].size >> 12;
+#if 0			
+	 		int epmap = 0;
+	 		int lpmap = 0;
+	 		if(n > 12) { epmap = 34; lpmap = -12; }
+			hprint (11+n+lpmap,0+epmap,v->pmap[n-1].start);
+			hprint (11+n+lpmap,10+epmap,v->pmap[n-1].end);
+			hprint (11+n+lpmap,20+epmap,v->pmap[n-1].end - v->pmap[n-1].start);
+			dprint (11+n+lpmap,30+epmap,nm[i].type,0,0);	
+#endif				
 		}
 	}
 	v->msegs = n;
-	cprint(LINE_INFO, COL_MMAP, "  e820");
 }
 	
 static void memsize_801(void)
@@ -181,10 +173,8 @@ static void memsize_801(void)
 
 	if (alt_mem_k < ext_mem_k) {
 		mem_size = ext_mem_k;
-		cprint(LINE_INFO, COL_MMAP, "   e88");
 	} else {
 		mem_size = alt_mem_k;
-		cprint(LINE_INFO, COL_MMAP, "  e801");
 	}
 	/* First we map in the first 640k */
 	v->pmap[0].start = 0;
@@ -354,131 +344,4 @@ static int sanitize_e820_map(struct e820entry *orig_map, struct e820entry *new_b
 		}
 	}
 	return(new_bios_entry);
-}
-
-static void memsize_probe(void)
-{
-	int i, n;
-	ulong m_lim;
-	static unsigned long magic = 0x1234569;
-
-	/* Since all address bits may not be decoded, the search for memory
-	 * must be limited.  The max address is found by checking for
-	 * memory wrap from 1MB to 4GB.  */
-	p1 = (ulong)&magic;
-	m_lim = 0xfffffffc; 
-	for (p2 = 0x100000; p2; p2 <<= 1) {  
-		p = (ulong *)(p1 + p2);
-		if (*p == 0x1234569) {
-			m_lim = --p2;
-			break;
-		}
-	}
-
-	/* Turn on cache */
-	set_cache(1);
-
-	/* Find all segments of RAM */
-
-	i = 0;
-	v->pmap[i].start = ((ulong)&_end + (1 << 12) - 1) >> 12;
-	p = (ulong *)(v->pmap[i].start << 12);
-
-	/* Limit search for memory to m_lim and make sure we don't 
-	 * overflow the 32 bit size of p.  */
-	while ((ulong)p < m_lim && (ulong)p >= (ulong)&_end) {
-		/*
-		 * Skip over reserved memory
-		 */
-		if ((ulong)p < RES_END && (ulong)p >= RES_START) {
-			v->pmap[i].end = RES_START >> 12;
-			v->test_pages += (v->pmap[i].end - v->pmap[i].start);
-			p = (ulong *)RES_END;
-			i++;
-			v->pmap[i].start = 0;
-			goto fstart;
-		}
-
-		if (check_ram() == 0) {
-			/* ROM or nothing at this address, record end addrs */
-			v->pmap[i].end = ((ulong)p) >> 12;
-			v->test_pages += (v->pmap[i].end - v->pmap[i].start);
-			i++;
-			v->pmap[i].start = 0;
-fstart:
-
-			/* We get here when there is a gap in memory.
-			 * Loop until we find more ram, the gap is more
-			 * than 32768k or we hit m_lim */
-			n = 32768 >> 2;
-			while ((ulong)p < m_lim && (ulong)p >= (ulong)&_end) {
-
-				/* Skip over video memory */
-				if ((ulong)p < RES_END &&
-					(ulong)p >= RES_START) {
-					p = (ulong *)RES_END;
-				}
-				if (check_ram() == 1) {
-					/* More RAM, record start addrs */
-					v->pmap[i].start = (ulong)p >> 12;
-					break;
-				}
-
-				/* If the gap is 32768k or more then there
-				 * is probably no more memory so bail out */
-				if (--n <= 0) {
-					p = (ulong *)m_lim;
-					break;
-				}
-				p += 0x1000;
-			}
-		}
-		p += 0x1000;
-	}
-
-	/* If there is ram right up to the memory limit this will record
-	 * the last address.  */
-	if (v->pmap[i].start) {
-		v->pmap[i].end = m_lim >> 12;
-		v->test_pages += (v->pmap[i].end - v->pmap[i].start);
-		i++;
-	}
-	v->msegs = i;
-}
-
-/* check_ram - Determine if this address points to memory by checking
- * for a wrap pattern and then reading and then writing the complement.
- * We then check that at least one bit changed in each byte before
- * believing that it really is memory.  */
-
-static int check_ram(void) 
-{
-        int s;
-
-        p1 = *p;
-
-        /* write the complement */
-        *p = ~p1;
-        p2 = *p;
-        s = 0;
-
-        /* Now make sure a bit changed in each byte */
-        if ((0xff & p1) != (0xff & p2)) {
-                s++;
-        }
-        if ((0xff00 & p1) != (0xff00 & p2)) {
-                s++;
-        }
-        if ((0xff0000 & p1) != (0xff0000 & p2)) {
-                s++;
-        }
-        if ((0xff000000 & p1) != (0xff000000 & p2)) {
-                s++;
-        }
-        if (s == 4) {
-                /* RAM at this address */
-                return 1;
-        }
-
-        return 0;
 }

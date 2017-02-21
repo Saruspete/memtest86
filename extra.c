@@ -12,7 +12,6 @@
 #include "pci.h"
 #include "extra.h"
 
-static int claim = 0;
 static int ctrl = -1;
 
 struct memory_controller {
@@ -429,7 +428,6 @@ void get_menu(void)
 	int menu ;
 
 	find_memctr();
-	disclaimer();
 
 	switch(ctrl)
 	{
@@ -535,35 +533,6 @@ int get_cas(void)
 
 	popclear();
 	return (cas);
-}
-
-void disclaimer(void)
-{
-	if ((ctrl == -1) || ( ctrl > sizeof(mem_ctr)/sizeof(mem_ctr[0])))
-	{
-		popclear();
-		wait_keyup();
-		cprint(POP_Y+3, POP_X+4, "   Chipset     ");
-		cprint(POP_Y+4, POP_X+4, "Not supported !");
-		get_key();
-		wait_keyup();
-		popclear();
-	}
-	else if (claim == 0)
-	{
-		ulong j = 0;
-
-		while (j<500000)
-		{
-			cprint(POP_Y+1, POP_X+3, "Disclaimer : ");
-			cprint(POP_Y+3, POP_X+3, "Modifying timing may ");
-			cprint(POP_Y+4, POP_X+3, "cause system instability");
-			cprint(POP_Y+5, POP_X+3, "proceed at your own risk");
-			j++;
-		}
-		claim = 1;
-		popclear();
-	}
 }
 
 /////////////////////////////////////////////////////////

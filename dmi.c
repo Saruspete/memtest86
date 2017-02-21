@@ -40,6 +40,43 @@ struct tstruct_header{
 	uint16_t handle;
 } __attribute__((packed));
 
+struct system_map {
+	struct tstruct_header header;
+	uint8_t	manufacturer;
+	uint8_t productname;
+	uint8_t version;
+	uint8_t serialnumber;
+	uint8_t uuidbytes[16];
+	uint8_t wut;
+} __attribute__((packed));
+
+struct cpu_map {
+	struct tstruct_header header;
+	uint8_t	cpu_socket;
+	uint8_t cpu_type;
+	uint8_t cpu_family;
+	uint8_t cpu_manufacturer;
+	uint32_t cpu_id;
+	uint8_t cpu_version;
+	uint8_t	cpu_voltage;
+	uint16_t	ext_clock;
+	uint16_t	max_speed;
+	uint16_t cur_speed;
+	uint8_t	cpu_status;
+	uint8_t	cpu_upgrade;
+	uint16_t l1_handle;
+	uint16_t l2_handle;
+	uint16_t l3_handle;
+	uint8_t	cpu_serial;	
+	uint8_t	cpu_asset_tag;
+	uint8_t cpu_part_number;
+	uint8_t	core_count;
+	uint8_t	core_enabled;
+	uint8_t	thread_count;
+	uint16_t cpu_specs;
+	uint16_t cpu_family_2;	
+} __attribute__((packed));
+
 struct mem_dev {
 	struct tstruct_header header;
 	uint16_t pma_handle;
@@ -91,7 +128,7 @@ static char *form_factors[] = {
 
 static char *memory_types[] = {
 	"?",
-	"Other", "Unknown", "DRAM", "EDRAM", "VRAM", "SRAM", "RAM",
+	"Other", "????", "DRAM", "EDRAM", "VRAM", "SRAM", "RAM",
 	"ROM", "FLASH", "EEPROM", "FEPROM", "EPROM", "CDRAM", "3DRAM",
 	"SDRAM", "SGRAM", "RDRAM", "DDR", "DDR2", "DDR2 FB", "RSVD",
   "RSVD","RSVD","DDR3","FBD2"
@@ -101,16 +138,11 @@ static char *memory_types[] = {
 struct mem_dev * mem_devs[MAX_DMI_MEMDEVS];
 int mem_devs_count=0;
 struct md_map * md_maps[MAX_DMI_MEMDEVS];
+struct system_map * dmi_system_info;
+struct cpu_map * dmi_cpu_info;
 int md_maps_count=0;
 int dmi_err_cnts[MAX_DMI_MEMDEVS];
 short dmi_initialized=0;
-
-int strlen(char * string){
-	int i=0;
-	while(*string++){i++;};
-	return i;
-}
-
 
 char * get_tstruct_string(struct tstruct_header *header, int n){
 	if(n<1)
@@ -172,13 +204,28 @@ int open_dmi(void){
 //look at all structs
 	while(dmi < table_start + eps->tablelength){
 		struct tstruct_header *header = (struct tstruct_header *)dmi;
+		
 		if (header->type == 17)
-			mem_devs[mem_devs_count++]=(struct mem_dev *)dmi;
+			mem_devs[mem_devs_count++] = (struct mem_dev *)dmi;
 		
 		// Need fix (SMBIOS/DDR3)
 		if (header->type == 20 || header->type == 1)
-			md_maps[md_maps_count++]=(struct md_map *)dmi;
+			md_maps[md_maps_count++] = (struct md_map *)dmi;
+
+		// MB_SPEC
+		if (header->type == 2)
+		{
+			dmi_system_info = (struct system_map *)dmi;
+		}
+
+		// CPU_SPEC
+		if (header->type == 4)
+		{
+			dmi_cpu_info = (struct cpu_map *)dmi;
+		}
+			
 		dmi+=header->length;
+		
 		while( ! (*dmi == 0  && *(dmi+1) == 0 ) )
 			dmi++;
 		dmi+=2;
@@ -195,6 +242,46 @@ void init_dmi(void){
 		dmi_err_cnts[i]=0;
 	open_dmi();
 	dmi_initialized=1;
+}
+
+void print_dmi_startup_info(void)
+{
+	char *string1;
+	char *string2;
+	char *string3;
+	int dmicol = 78;
+	int slenght;
+	int sl1, sl2, sl3;
+	
+	if(!dmi_initialized) { init_dmi(); }
+		
+	string1 = get_tstruct_string(&dmi_system_info->header,dmi_system_info->manufacturer);
+	sl1 = strlen(string1);
+	string2 = get_tstruct_string(&dmi_system_info->header,dmi_system_info->productname);	
+	sl2 = strlen(string2);
+	string3 = get_tstruct_string(&dmi_cpu_info->header,dmi_cpu_info->cpu_socket);
+	sl3 = strlen(string3);
+
+	slenght = sl1 + sl2;
+	if(sl3 > 2) { slenght += sl3 + 4; } else { slenght++; }
+	
+	if(sl1 && sl2)
+		{
+			//dmicol -= slenght; // right align
+			dmicol = 39 - slenght/2; // center align
+			cprint(LINE_DMI, dmicol, string1);
+			dmicol += sl1 + 1;
+			cprint(LINE_DMI, dmicol, string2);
+			dmicol += sl2 + 1;
+			
+			if(sl3 > 2){
+				cprint(LINE_DMI, dmicol, "(");
+				dmicol++;
+				cprint(LINE_DMI, dmicol, string3);
+				dmicol += sl3;
+				cprint(LINE_DMI, dmicol, ")");
+			}
+		}
 }
 
 void print_dmi_info(void){
@@ -256,22 +343,30 @@ void print_dmi_info(void){
 			//print mappings
 			int mapped=0,of=0;
 			cprint(yof+1, POP2_X+6,"mapped to: ");
-			for(j=0; j<md_maps_count; j++){
+			for(j=0; j<md_maps_count; j++)
+			{
 				if (mem_devs[i]->header.handle != md_maps[j]->md_handle)
 					continue;
 				if (mapped++){
 					cprint(yof+1, POP2_X+17+of, ",");
 					of++;
 				}
-				hprint3(yof+1, POP2_X+17+of, md_maps[j]->start<<10, 12);
-				of += 12;
+				hprint3(yof+1, POP2_X+17+of, md_maps[j]->start>>22, 4);
+				of += 4;
+				hprint3(yof+1, POP2_X+17+of, md_maps[j]->start<<10, 8);
+				of += 8;
 				cprint(yof+1, POP2_X+17+of, "-");
 				of++;
-				hprint3(yof+1, POP2_X+17+of, md_maps[j]->end<<10, 12);
-				of += 12;
+				hprint3(yof+1, POP2_X+17+of, md_maps[j]->end>>22, 4);
+				of += 4;
+				hprint3(yof+1, POP2_X+17+of, ((md_maps[j]->end+1)<<10) - 1, 8);
+				of += 8;
+				if(md_maps[j]->end == 0) { hprint3(yof+1, POP2_X+17+of-8,0,8); }
 			}
 			if (!mapped)
+			{
 				cprint(yof+1, POP2_X+17, "No mapping (Interleaved Device)");
+			}
 
 		}
 
