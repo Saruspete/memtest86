@@ -1,0 +1,24 @@
+Memtest86+ V2.00 changelog
+--------------------------
+
+- Major Architectures changes
+- Modulo test now use random pattern for better accuracy
+- Added Advanced DMI Errors Reporting Mode
+- Added support for bus ratio changes on Intel Core CPU
+- Added support for non-integer bus ratio on latest Intel CPU
+- Added SPD Data Display for all Intel Chipsets (more to come)
+- Added serial support as a linux boot parameter (Thanks to Michal S.)
+- Added preliminary support for VIA CN Isaiah CPU
+- Added preliminary support for Intel Nehalem
+- Adedd support for VIA C7/C7-D/C7-M/Eden on Esther Core
+- Added support for AMD K10 (Phenom) CPU w/ timings detection
+- Added support for Intel Pentium E w/ 1 MB L2 Cache
+- Added support for Intel Core 2 45nm (Penryn)
+- Added support for FSB1333/FSB1600 Intel CPU
+- Added support for Intel 5400A/5400B w/ timings detection
+- Added support for Intel Q35/P35/G33/Q33 w/ timings detection
+- Added support for Intel X38/X48 w/ timings detection
+- Added preliminary support for Intel 5000P/V/Z
+- Removed on-fly memory timings change (unstable)
+- Numerous (really) bug fixes
+
