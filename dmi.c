@@ -10,12 +10,10 @@
 
 
 #include "test.h"
-#include <stdint.h>
-
+#include "stdint.h"
 
 #define round_up(x,y) (((x) + (y) - 1) & ~((y)-1))
 #define round_down(x,y) ((x) & ~((y)-1))
-
 
 struct dmi_eps {
 	uint8_t  anchor[4];
@@ -95,6 +93,12 @@ struct mem_dev {
 	uint8_t  serialnum;
 	uint8_t  asset;
 	uint8_t  partnum;
+	uint8_t  attributes;
+	uint8_t  ext_size;
+	uint8_t  conf_ram_speed;			
+	uint8_t  min_voltage;		
+	uint8_t  max_votage;		
+	uint8_t  conf_voltage;		
 } __attribute__((packed));
 
 struct md_map{
@@ -122,7 +126,7 @@ static char *form_factors[] = {
 	"?",
 	"Other", "Unknown", "SIMM", "SIP", "Chip", "DIP", "ZIP",
 	"Proprietary Card", "DIMM", "TSOP", "Row of chips", "RIMM",
-	"SODIMM", "SRIMM", "FB-DIMM"
+	"SODIMM", "SRIMM", "FB-DIMM", "Die"
 };
 
 
@@ -131,7 +135,8 @@ static char *memory_types[] = {
 	"Other", "????", "DRAM", "EDRAM", "VRAM", "SRAM", "RAM",
 	"ROM", "FLASH", "EEPROM", "FEPROM", "EPROM", "CDRAM", "3DRAM",
 	"SDRAM", "SGRAM", "RDRAM", "DDR", "DDR2", "DDR2 FB", "RSVD",
-  "RSVD","RSVD","DDR3","FBD2"
+  "RSVD","RSVD","DDR3","FBD2", "DDR4", "LPDDR", "LPDDR2", "LPDDR3",
+  "LPDDR4", "LNVD", "HBM", "HBM2", "DDR5", "LPDDR5"
 };
 
 
@@ -198,7 +203,6 @@ int open_dmi(void){
 	    return -1;
 	}
 
-
 	table_start=(char *)eps->tableaddress;
 	dmi=table_start;
 //look at all structs
@@ -208,8 +212,8 @@ int open_dmi(void){
 		if (header->type == 17)
 			mem_devs[mem_devs_count++] = (struct mem_dev *)dmi;
 		
-		// Need fix (SMBIOS/DDR3)
-		if (header->type == 20 || header->type == 1)
+		// Mem Dev Map
+		if (header->type == 20)
 			md_maps[md_maps_count++] = (struct md_map *)dmi;
 
 		// MB_SPEC
@@ -256,11 +260,11 @@ void print_dmi_startup_info(void)
 	if(!dmi_initialized) { init_dmi(); }
 		
 	string1 = get_tstruct_string(&dmi_system_info->header,dmi_system_info->manufacturer);
-	sl1 = strlen(string1);
+	sl1 = mt86_strlen(string1);
 	string2 = get_tstruct_string(&dmi_system_info->header,dmi_system_info->productname);	
-	sl2 = strlen(string2);
+	sl2 = mt86_strlen(string2);
 	string3 = get_tstruct_string(&dmi_cpu_info->header,dmi_cpu_info->cpu_socket);
-	sl3 = strlen(string3);
+	sl3 = mt86_strlen(string3);
 
 	slenght = sl1 + sl2;
 	if(sl3 > 2) { slenght += sl3 + 4; } else { slenght++; }
@@ -314,17 +318,22 @@ void print_dmi_info(void){
 			int size_in_mb;
 			int yof;
 
-			yof=POP2_Y+5+2*(i-8*(page-1));
+			yof = POP2_Y+5+2*(i-8*(page-1));
 			cprint(yof, POP2_X+4, get_tstruct_string(&(mem_devs[i]->header), mem_devs[i]->dev_locator));
-
+	
 			if (mem_devs[i]->size == 0){
 				cprint(yof, POP2_X+4+18, "Empty");
 			}else if (mem_devs[i]->size == 0xFFFF){
 				cprint(yof, POP2_X+4+18, "Unknown");
+			}else if (mem_devs[i]->size == 0x7FFF){
+				// SMBIOS 2.7+
+				size_in_mb = mem_devs[i]->ext_size;
+				itoa(string, size_in_mb);
+				cprint(yof, POP2_X+4+18, string);
 			}else{
-				size_in_mb = 0xEFFF & mem_devs[i]->size;
+				size_in_mb = 0xFFFF & mem_devs[i]->size;
 				if (mem_devs[i]->size & 0x8000)
-					size_in_mb = size_in_mb<<10;
+					size_in_mb <<= 10;
 				itoa(string, size_in_mb);
 				cprint(yof, POP2_X+4+18, string);
 			}
@@ -408,22 +417,22 @@ void print_dmi_err(void){
 	
 	scroll();
 	
-	cprint(v->msg_line, 0,"Bad Memory Devices: ");
+	cprint(vv->msg_line, 0,"Bad Memory Devices: ");
 	of=20;
 	for ( i=count=0; i < MAX_DMI_MEMDEVS; i++){
 		if (!dmi_err_cnts[i])
 			continue;
 		struct mem_dev *md = mem_devs[i];
 		if(count++){
-			cprint(v->msg_line, of, ", ");
+			cprint(vv->msg_line, of, ", ");
 			of+=2;
 		}
 		string=get_tstruct_string((struct tstruct_header *)md,md->dev_locator);
-		if (strlen(string) + of > 80){
+		if (mt86_strlen(string) + of > 80){
 			scroll();
 			of=7;
 		}
-		cprint(v->msg_line, of, string);
-		of += strlen(string);
+		cprint(vv->msg_line, of, string);
+		of += mt86_strlen(string);
 	}
 }

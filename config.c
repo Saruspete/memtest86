@@ -61,7 +61,7 @@ void get_config()
 			cprint(POP_Y+5, POP_X+6, "(3) Select Test");
 		  cprint(POP_Y+6, POP_X+6, "(4) Enter Test List");
 			cprint(POP_Y+7, POP_X+6, "(0) Cancel");
-			if (v->testsel < 0) {
+			if (vv->testsel < 0) {
 				cprint(POP_Y+3, POP_X+5, ">");
 			} else {
 				cprint(POP_Y+5, POP_X+5, ">");
@@ -102,7 +102,7 @@ void get_config()
 					    }
 					    /* Now set the selection */
 					    tseq[n].sel = 1;
-					    v->pass = -1;
+					    vv->pass = -1;
 					    test = n;
 					    find_ticks_for_pass();
 					    sflag++;
@@ -132,7 +132,7 @@ void get_config()
 					 * list */
 					i = j = m = 0;
 					while (1) {
-					    if (isdigit(cp[i])) {
+					    if (mt86_isdigit(cp[i])) {
 						n = cp[i]-'0';
 						j = j*10 + n;
 						i++;
@@ -157,7 +157,7 @@ void get_config()
 					        k++;
 					    }
 					}
-					v->pass = -1;
+					vv->pass = -1;
 					test = n;
 					find_ticks_for_pass();
 					sflag++;
@@ -189,12 +189,12 @@ void get_config()
 						"Lower Limit: ");
 					cprint(POP_Y+4, POP_X+4,
 						"Current: ");
-					aprint(POP_Y+4, POP_X+13, v->plim_lower);
+					aprint(POP_Y+4, POP_X+13, vv->plim_lower);
 					cprint(POP_Y+6, POP_X+4,
 						"New: ");
 					page = getval(POP_Y+6, POP_X+9, 12);
-					if (page + 1 <= v->plim_upper) {
-						v->plim_lower = page;
+					if (page + 1 <= vv->plim_upper) {
+						vv->plim_lower = page;
 						test--;
 						bail++;
 					}
@@ -210,12 +210,12 @@ void get_config()
 						"Upper Limit: ");
 					cprint(POP_Y+4, POP_X+4,
 						"Current: ");
-					aprint(POP_Y+4, POP_X+13, v->plim_upper);
+					aprint(POP_Y+4, POP_X+13, vv->plim_upper);
 					cprint(POP_Y+6, POP_X+4,
 						"New: ");
 					page = getval(POP_Y+6, POP_X+9, 12);
-					if  (page - 1 >= v->plim_lower) {
-						v->plim_upper = page;
+					if  (page - 1 >= vv->plim_lower) {
+						vv->plim_upper = page;
 						bail++;
 						test--;
 					}
@@ -226,9 +226,9 @@ void get_config()
 					break;
 				case 4:
 					/* All of memory */
-					v->plim_lower = 0;
-					v->plim_upper =
-						v->pmap[v->msegs - 1].end;
+					vv->plim_lower = 0;
+					vv->plim_upper =
+						vv->pmap[vv->msegs - 1].end;
 					test--;
 					bail++;
 					adj_mem();
@@ -255,37 +255,37 @@ void get_config()
 			cprint(POP_Y+6, POP_X+6, "(4) Error Counts Only");
 			cprint(POP_Y+7, POP_X+6, "(5) Beep on Error");
 			cprint(POP_Y+8, POP_X+6, "(0) Cancel");
-			cprint(POP_Y+3+v->printmode, POP_X+5, ">");
+			cprint(POP_Y+3+vv->printmode, POP_X+5, ">");
 			if (beepmode) { cprint(POP_Y+7, POP_X+5, ">"); }
 			wait_keyup();
 			while (!sflag) {
 				switch(get_key()) {
 				case 2:
 					/* Error Summary */
-					v->printmode=PRINTMODE_SUMMARY;
-					v->erri.eadr = 0;
-					v->erri.hdr_flag = 0;
+					vv->printmode=PRINTMODE_SUMMARY;
+					vv->erri.eadr = 0;
+					vv->erri.hdr_flag = 0;
 					sflag++;
 					break;
 				case 3:
 					/* Separate Addresses */
-					v->printmode=PRINTMODE_ADDRESSES;
-					v->erri.eadr = 0;
-					v->erri.hdr_flag = 0;
-					v->msg_line = LINE_SCROLL-1;
+					vv->printmode=PRINTMODE_ADDRESSES;
+					vv->erri.eadr = 0;
+					vv->erri.hdr_flag = 0;
+					vv->msg_line = LINE_SCROLL-1;
 					sflag++;
 					break;
 				case 4:
 					/* BadRAM Patterns */
-					v->printmode=PRINTMODE_PATTERNS;
-					v->erri.hdr_flag = 0;
+					vv->printmode=PRINTMODE_PATTERNS;
+					vv->erri.hdr_flag = 0;
 					sflag++;
 					prt++;
 					break;
 				case 5:
 					/* Error Counts Only */
-					v->printmode=PRINTMODE_NONE;
-					v->erri.hdr_flag = 0;
+					vv->printmode=PRINTMODE_NONE;
+					vv->erri.hdr_flag = 0;
 					sflag++;
 					break;
 				case 6:
@@ -491,41 +491,41 @@ void adj_mem(void)
 {
 	int i;
 
-	v->selected_pages = 0;
-	for (i=0; i< v->msegs; i++) {
+	vv->selected_pages = 0;
+	for (i=0; i< vv->msegs; i++) {
 		/* Segment inside limits ? */
-		if (v->pmap[i].start >= v->plim_lower &&
-				v->pmap[i].end <= v->plim_upper) {
-			v->selected_pages += (v->pmap[i].end - v->pmap[i].start);
+		if (vv->pmap[i].start >= vv->plim_lower &&
+				vv->pmap[i].end <= vv->plim_upper) {
+			vv->selected_pages += (vv->pmap[i].end - vv->pmap[i].start);
 			continue;
 		}
 		/* Segment starts below limit? */
-		if (v->pmap[i].start < v->plim_lower) {
+		if (vv->pmap[i].start < vv->plim_lower) {
 			/* Also ends below limit? */
-			if (v->pmap[i].end < v->plim_lower) {
+			if (vv->pmap[i].end < vv->plim_lower) {
 				continue;
 			}
 			
 			/* Ends past upper limit? */
-			if (v->pmap[i].end > v->plim_upper) {
-				v->selected_pages += 
-					v->plim_upper - v->plim_lower;
+			if (vv->pmap[i].end > vv->plim_upper) {
+				vv->selected_pages += 
+					vv->plim_upper - vv->plim_lower;
 			} else {
 				/* Straddles lower limit */
-				v->selected_pages += 
-					(v->pmap[i].end - v->plim_lower);
+				vv->selected_pages += 
+					(vv->pmap[i].end - vv->plim_lower);
 			}
 			continue;
 		}
 		/* Segment ends above limit? */
-		if (v->pmap[i].end > v->plim_upper) {
+		if (vv->pmap[i].end > vv->plim_upper) {
 			/* Also starts above limit? */
-			if (v->pmap[i].start > v->plim_upper) {
+			if (vv->pmap[i].start > vv->plim_upper) {
 				continue;
 			}
 			/* Straddles upper limit */
-			v->selected_pages += 
-				(v->plim_upper - v->pmap[i].start);
+			vv->selected_pages += 
+				(vv->plim_upper - vv->pmap[i].start);
 		}
 	}
 }

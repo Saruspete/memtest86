@@ -135,7 +135,6 @@
  * the low four bits control software flow control
  */
 
-#include "io.h"
 #define serial_echo_outb(v,a) outb((v),(a)+serial_base_ports[serial_tty])
 #define serial_echo_inb(a)    inb((a)+serial_base_ports[serial_tty])
 #define BOTH_EMPTY (UART_LSR_TEMT | UART_LSR_THRE)

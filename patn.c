@@ -37,65 +37,65 @@
 /* Combine two adr/mask pairs to one adr/mask pair.
  */
 void combine (ulong adr1, ulong mask1, ulong adr2, ulong mask2,
-		ulong *adr, ulong *mask) {
+              ulong *adr, ulong *mask) {
 
-	*mask = COMBINE_MASK (adr1, mask1, adr2, mask2);
+    *mask = COMBINE_MASK (adr1, mask1, adr2, mask2);
 
-	*adr  = adr1 | adr2;
-	*adr &= *mask;	// Normalise, no fundamental need for this
+    *adr  = adr1 | adr2;
+    *adr &= *mask;	// Normalise, no fundamental need for this
 }
 
 /* Count the number of addresses covered with a mask.
  */
 ulong addresses (ulong mask) {
-	ulong ctr=1;
-	int i=32;
-	while (i-- > 0) {
-		if (! (mask & 1)) {
-			ctr += ctr;
-		}
-		mask >>= 1;
-	}
-	return ctr;
+    ulong ctr=1;
+    int i=32;
+    while (i-- > 0) {
+        if (! (mask & 1)) {
+            ctr += ctr;
+        }
+        mask >>= 1;
+    }
+    return ctr;
 }
 
 /* Count how much more addresses would be covered by adr1/mask1 when combined
  * with adr2/mask2.
  */
 ulong combicost (ulong adr1, ulong mask1, ulong adr2, ulong mask2) {
-	ulong cost1=addresses (mask1);
-	ulong tmp, mask;
-	combine (adr1, mask1, adr2, mask2, &tmp, &mask);
-	return addresses (mask) - cost1;
+    ulong cost1=addresses (mask1);
+    ulong tmp, mask;
+    combine (adr1, mask1, adr2, mask2, &tmp, &mask);
+    return addresses (mask) - cost1;
 }
 
 /* Find the cheapest array index to extend with the given adr/mask pair.
  * Return -1 if nothing below the given minimum cost can be found.
  */
 int cheapindex (ulong adr1, ulong mask1, ulong mincost) {
-	int i=v->numpatn;
-	int idx=-1;
-	while (i-- > 0) {
-		ulong tmpcost=combicost(v->patn[i].adr, v->patn[i].mask, adr1, mask1);
-		if (tmpcost < mincost) {
-			mincost=tmpcost;
-			idx=i;
-		}
-	}
-	return idx;
+    int i=vv->numpatn;
+    int idx=-1;
+    while (i-- > 0) {
+        ulong tmpcost=combicost(vv->patn[i].adr, vv->patn[i].mask, adr1, mask1);
+        if (tmpcost < mincost) {
+            mincost=tmpcost;
+            idx=i;
+        }
+    }
+    return idx;
 }
 
 /* Try to find a relocation index for idx if it costs nothing.
  * Return -1 if no such index exists.
  */
 int relocateidx (int idx) {
-	ulong adr =v->patn[idx].adr;
-	ulong mask=v->patn[idx].mask;
-	int new;
-	v->patn[idx].adr ^= ~0L;	// Never select idx
-	new=cheapindex (adr, mask, 1+addresses (mask));
-	v->patn[idx].adr = adr;
-	return new;
+    ulong adr =vv->patn[idx].adr;
+    ulong mask=vv->patn[idx].mask;
+    int new;
+    vv->patn[idx].adr ^= ~0L;	// Never select idx
+    new=cheapindex (adr, mask, 1+addresses (mask));
+    vv->patn[idx].adr = adr;
+    return new;
 }
 
 /* Relocate the given index idx only if free of charge.
@@ -103,42 +103,42 @@ int relocateidx (int idx) {
  * Inspired on the Buddy memalloc principle in the Linux kernel.
  */
 void relocateiffree (int idx) {
-	int newidx=relocateidx (idx);
-	if (newidx>=0) {
-		ulong cadr, cmask;
-		combine (v->patn [newidx].adr, v->patn[newidx].mask,
-		         v->patn [   idx].adr, v->patn[   idx].mask,
-			 &cadr, &cmask);
-		v->patn[newidx].adr =cadr;
-		v->patn[newidx].mask=cmask;
-		if (idx < --v->numpatn) {
-			v->patn[idx].adr =v->patn[v->numpatn].adr;
-			v->patn[idx].mask=v->patn[v->numpatn].mask;
-		}
-		relocateiffree (newidx);
-	}
+    int newidx=relocateidx (idx);
+    if (newidx>=0) {
+        ulong cadr, cmask;
+        combine (vv->patn [newidx].adr, vv->patn[newidx].mask,
+                 vv->patn [   idx].adr, vv->patn[   idx].mask,
+                 &cadr, &cmask);
+        vv->patn[newidx].adr =cadr;
+        vv->patn[newidx].mask=cmask;
+        if (idx < --vv->numpatn) {
+            vv->patn[idx].adr =vv->patn[vv->numpatn].adr;
+            vv->patn[idx].mask=vv->patn[vv->numpatn].mask;
+        }
+        relocateiffree (newidx);
+    }
 }
 
 /* Insert a single faulty address in the pattern array.
  * Return 1 only if the array was changed.
  */
 int insertaddress (ulong adr) {
-	if (cheapindex (adr, DEFAULT_MASK, 1L) != -1)
-		return 0;
+    if (cheapindex (adr, DEFAULT_MASK, 1L) != -1)
+        return 0;
 
-	if (v->numpatn < BADRAM_MAXPATNS) {
-		v->patn[v->numpatn].adr =adr;
-		v->patn[v->numpatn].mask=DEFAULT_MASK;
-		v->numpatn++;
-		relocateiffree (v->numpatn-1);
-	} else {
-		int idx=cheapindex (adr, DEFAULT_MASK, ~0L);
-		ulong cadr, cmask;
-		combine (v->patn [idx].adr, v->patn[idx].mask,
-		         adr, DEFAULT_MASK, &cadr, &cmask);
-		v->patn[idx].adr =cadr;
-		v->patn[idx].mask=cmask;
-		relocateiffree (idx);
-	}
-	return 1;
+    if (vv->numpatn < BADRAM_MAXPATNS) {
+        vv->patn[vv->numpatn].adr =adr;
+        vv->patn[vv->numpatn].mask=DEFAULT_MASK;
+        vv->numpatn++;
+        relocateiffree (vv->numpatn-1);
+    } else {
+        int idx=cheapindex (adr, DEFAULT_MASK, ~0L);
+        ulong cadr, cmask;
+        combine (vv->patn [idx].adr, vv->patn[idx].mask,
+                 adr, DEFAULT_MASK, &cadr, &cmask);
+        vv->patn[idx].adr =cadr;
+        vv->patn[idx].mask=cmask;
+        relocateiffree (idx);
+    }
+    return 1;
 }

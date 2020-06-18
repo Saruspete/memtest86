@@ -22,26 +22,26 @@
 #define E820_NVS        4
 
 struct e820entry {
-        unsigned long long addr;        /* start of memory segment */
-        unsigned long long size;        /* size of memory segment */
-        unsigned long type;             /* type of memory segment */
+    unsigned long long addr;        /* start of memory segment */
+    unsigned long long size;        /* size of memory segment */
+    unsigned long type;             /* type of memory segment */
 };
 
 struct mem_info_t {
-	unsigned long e88_mem_k;	/* 0x00 */
-	unsigned long e801_mem_k;	/* 0x04 */
-	unsigned long e820_nr;		/* 0x08 */
-	struct e820entry e820[E820MAX];	/* 0x0c */
-					/* 0x28c */
+    unsigned long e88_mem_k;         /* 0x00 */
+    unsigned long e801_mem_k;        /* 0x04 */
+    unsigned long e820_nr;           /* 0x08 */
+    struct e820entry e820[E820MAX];  /* 0x0c */
+                                    /* 0x28c */
 };
 
 typedef unsigned long ulong;
-#define STACKSIZE       (8*1024)
-#define MAX_MEM         0x7FF00000      /* 8 TB */
-#define WIN_SZ          0x80000         /* 2 GB */
-#define UNMAP_SZ        (0x100000-WIN_SZ)  /* Size of umappped first segment */
+#define STACKSIZE_BYTES (8*1024)
+#define MAX_MEM_PAGES   0x7FF00000      /* 8 TB; units are 4K pages */
+#define WIN_SZ_PAGES    0x80000         /* 2 GB; units are 4K pages */
+#define UNMAP_SZ_PAGES  (0x100000-WIN_SZ_PAGES)  /* Size of unmapped first segment */
 
-#define SPINSZ		0x4000000	/* 256 MB */
+#define SPINSZ_DWORDS	0x4000000	/* 256 MB; units are dwords (32-bit words) */
 #define MOD_SZ		20
 #define BAILOUT		if (bail) return(1);
 #define BAILR		if (bail) return;
@@ -106,11 +106,11 @@ typedef unsigned long ulong;
 
 #define getCx86(reg) ({ outb((reg), 0x22); inb(0x23); })
 
-int memcmp(const void *s1, const void *s2, ulong count);
-void *memmove(void *dest, const void *src, ulong n);
-int strncmp(const char *s1, const char *s2, ulong n);
-int strstr(char *str1, char *str2);
-int strlen(char *string);
+int mt86_memcmp(const void *s1, const void *s2, ulong count);
+void *mt86_memmove(void *dest, const void *src, ulong n);
+int mt86_strncmp(const char *s1, const char *s2, ulong n);
+int mt86_strstr(char *str1, char *str2);
+int mt86_strlen(char *string);
 int query_linuxbios(void);
 int query_pcbios(void);
 int insertaddress(ulong);
@@ -136,7 +136,12 @@ void movinvr(int cpu);
 void movinv32(int iter, ulong p1, ulong lb, ulong mb, int sval, int off,
 	int cpu);
 void modtst(int off, int iter, ulong p1, ulong p2, int cpu);
-void error(ulong* adr, ulong good, ulong bad);
+#define ASSERT(n) do {                   \
+    if (!(n)) {                          \
+        assert_fail(__FILE__, __LINE__); \
+    } } while(0)
+void assert_fail(const char* file, int line_no);
+void mt86_error(ulong* adr, ulong good, ulong bad);
 void ad_err1(ulong *adr1, ulong *adr2, ulong good, ulong bad);
 void ad_err2(ulong *adr, ulong bad);
 void do_tick();
@@ -180,9 +185,9 @@ void clear_screen(void);
 void paging_off(void);
 void show_spd(void);
 int map_page(unsigned long page);
-void *mapping(unsigned long page_address);
-void *emapping(unsigned long page_address);
-int isdigit(char c);
+void *mapping(unsigned long phys_page);   // get VA for a physical page
+void *emapping(unsigned long phys_page);
+int mt86_isdigit(char c);
 ulong memspeed(ulong src, ulong len, int iter);
 unsigned long page_of(void *ptr);
 ulong correct_tsc(ulong el_org);
@@ -190,6 +195,25 @@ void bit_fade_fill(unsigned long n, int cpu);
 void bit_fade_chk(unsigned long n, int cpu);
 void find_ticks_for_pass(void);
 void beep(unsigned int frequency);
+
+// Expose foreach_segment here for self_test, otherwise
+// it would be local to test.c:
+typedef void(*segment_fn)(ulong* start,  // start address
+                          ulong len_dw,  // length of segment in dwords
+                          const void* ctx);  // any context data needed
+void foreach_segment(ulong* start, ulong* end,
+                     int me, const void* ctx, segment_fn func);
+
+
+// In self-test, DEBUGF wraps libc's printf.
+// In memtest standalone, printf will be a stub
+// and 'vv->debugging' is false to avoid call overhead.
+int printf(const char *format, ...);
+#define DEBUGF(...) {            \
+        if (vv->debugging) {     \
+            printf(__VA_ARGS__); \
+        }                        \
+    }
 
 #define PRINTMODE_SUMMARY   0
 #define PRINTMODE_ADDRESSES 1
@@ -205,62 +229,63 @@ struct pair {
 
 static inline void cache_off(void)
 {
-        asm(
-		"push %eax\n\t"
-		"movl %cr0,%eax\n\t"
-    "orl $0x40000000,%eax\n\t"  /* Set CD */
-    "movl %eax,%cr0\n\t"
-		"wbinvd\n\t"
-		"pop  %eax\n\t");
+    asm(
+        "push %eax\n\t"
+        "movl %cr0,%eax\n\t"
+        "orl $0x40000000,%eax\n\t"  /* Set CD */
+        "movl %eax,%cr0\n\t"
+        "wbinvd\n\t"
+        "pop  %eax\n\t");
 }
 
 static inline void cache_on(void)
 {
-        asm(
-		"push %eax\n\t"
-		"movl %cr0,%eax\n\t"
-    "andl $0x9fffffff,%eax\n\t" /* Clear CD and NW */ 
-    "movl %eax,%cr0\n\t"
-		"pop  %eax\n\t");
+    asm(
+        "push %eax\n\t"
+        "movl %cr0,%eax\n\t"
+        "andl $0x9fffffff,%eax\n\t" /* Clear CD and NW */ 
+        "movl %eax,%cr0\n\t"
+        "pop  %eax\n\t");
 }
 
 struct mmap {
-	ulong pbase_addr;
-	ulong *start;
-	ulong *end;
+    ulong pbase_addr;
+    ulong *start;  // VA of segment start
+    ulong *end;    // VA of the last dword within the segment.
 };
 
 struct pmap {
-	ulong start;
-	ulong end;
+    ulong start;   /* phys page number of RAM segment start,
+                      in 4K pages. */
+    ulong end;  // phys page number (past the end? or inclusive?)
 };
 
 struct tseq {
-	short sel;
-	short cpu_sel;
-	short pat;
-	short iter;
-	short errors;
-	char *msg;
+    short sel;     // enabled
+    short cpu_sel; // cpu_sel == 0 indicates end of tseq[] array
+    short pat;     // the test #
+    short iter;    // # of iterations to run
+    short errors;  // error count, updated as tests run
+    char *msg;
 };
 
 struct xadr {
-	ulong page;
-	ulong offset;
+    ulong page;
+    ulong offset;
 };
 
 struct err_info {
-	struct xadr   low_addr;
-	struct xadr   high_addr;
-	unsigned long ebits;
-	long	      tbits;
-	short         min_bits;
-	short         max_bits;
-	unsigned long maxl;
-	unsigned long eadr;
-        unsigned long exor;
-        unsigned long cor_err;
-	short         hdr_flag;
+    struct xadr   low_addr;
+    struct xadr   high_addr;
+    unsigned long ebits;
+    long          tbits;
+    short         min_bits;
+    short         max_bits;
+    unsigned long maxl;
+    unsigned long eadr;
+    unsigned long exor;
+    unsigned long cor_err;
+    short         hdr_flag;
 };
 
 
@@ -269,46 +294,49 @@ struct err_info {
 
 #define MAX_MEM_SEGMENTS E820MAX
 
-/* Define common variables accross relocations of memtest86 */
+/* Define common variables across relocations of memtest86 */
 struct vars {
-	int pass;
-	int msg_line;
-	int ecount;
-	int ecc_ecount;
-	int msegs;
-	int testsel;
-	int scroll_start;
-	int pass_ticks;
-	int total_ticks;
-	int pptr;
-	int tptr;
-	struct err_info erri;
-	struct pmap pmap[MAX_MEM_SEGMENTS];
-	volatile struct mmap map[MAX_MEM_SEGMENTS];
-	ulong plim_lower;
-	ulong plim_upper;
-	ulong clks_msec;
-	ulong starth;
-	ulong startl;
-	ulong snaph;
-	ulong snapl;
-	int printmode;
-	int numpatn;
-	struct pair patn [BADRAM_MAXPATNS];
-	ulong test_pages;
-	ulong selected_pages;
-	ulong reserved_pages;
-	int check_temp;
-	int fail_safe;
-	int each_sec;
-	int beepmode;
+    int pass;
+    int msg_line;
+    int ecount;
+    int ecc_ecount;
+    int msegs;  // number of entries in pmap[]
+    int testsel;
+    int scroll_start;
+    int pass_ticks;
+    int total_ticks;
+    int pptr;
+    int tptr;
+    struct err_info erri;
+    // PA ranges from e820 table:
+    struct pmap pmap[MAX_MEM_SEGMENTS];
+    // VA mappings:
+    volatile struct mmap map[MAX_MEM_SEGMENTS];
+    ulong plim_lower;  // phys page number
+    ulong plim_upper;  // phys page number
+    ulong clks_msec;
+    ulong starth;
+    ulong startl;
+    ulong snaph;
+    ulong snapl;
+    int printmode;
+    int numpatn;
+    struct pair patn [BADRAM_MAXPATNS];
+    ulong test_pages;
+    ulong selected_pages;
+    ulong reserved_pages;
+    int check_temp;
+    int fail_safe;
+    int each_sec;
+    int beepmode;
+    int debugging;  // Set in selftest only
 };
 
 #define FIRMWARE_UNKNOWN   0
 #define FIRMWARE_PCBIOS    1
 #define FIRMWARE_LINUXBIOS 2
 
-extern struct vars * const v;
+extern struct vars * const vv;
 extern unsigned char _start[], _end[], startup_32[];
 extern unsigned char _size, _pages;
 

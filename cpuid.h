@@ -1,3 +1,6 @@
+#ifndef CPUID_H_
+#define CPUID_H_
+
 /*
  * cpuid.h --
  *      contains the data structures required for CPUID 
@@ -12,7 +15,7 @@
 extern struct cpu_ident cpu_id;
 
 static inline void __cpuid(unsigned int *eax, unsigned int *ebx,
-                                unsigned int *ecx, unsigned int *edx)
+                           unsigned int *ecx, unsigned int *edx)
 {
         /* ecx is often an input as well as an output. */
         asm volatile("\t"
@@ -150,9 +153,9 @@ typedef union {
       uint32_t    mon:1;
       uint32_t    dscpl:1;
       uint32_t    vmx:1;
-     	uint32_t    smx:1;      	
-     	uint32_t    eist:1;  
-     	uint32_t    tm2:1;       		     		
+      uint32_t    smx:1;      	
+      uint32_t    eist:1;  
+      uint32_t    tm2:1;       		     		
       uint32_t    bits_9_31:23;
       uint32_t    bits0_28:29;     /* EDX extended feature flags, bit 0 */
       uint32_t    lm:1;		   /* Long Mode */
@@ -194,3 +197,6 @@ struct cpuid4_ecx {
 	uint32_t	number_of_sets:32;
 };
 
+void get_cpuid();
+
+#endif  // CPUID_H_

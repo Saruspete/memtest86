@@ -15,7 +15,7 @@
  */
 #define LOW_TEST_ADR	0x00010000		/* Final adrs for test code */
 
-#define BOOTSEG		0x07c0			/* Segment adrs for inital boot */
+#define BOOTSEG		0x07c0			/* Segment adrs for initial boot */
 #define INITSEG		0x9000			/* Segment adrs for relocated boot */
 #define SETUPSEG	(INITSEG+0x20)		/* Segment adrs for relocated setup */
 #define TSTLOAD		0x1000			/* Segment adrs for load of test */

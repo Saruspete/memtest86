@@ -132,9 +132,9 @@ addr   memory that is being tested... |0x200000                 |         |RAM_E
        e820 map which we have stored in v->pmap[] array, since all 
        memory in the selected window address range may correspond to
        RAM or can be usable. A list of segments within the window is
-       created , which contain the usable portions of the window. 
+       created, which contain the usable portions of the window. 
        This is stored in v->mmap[] array.
-   vi. Once the v->mmap[] array populated, we have the list of 
+   vi. Once the v->mmap[] array is populated, we have the list of 
        non-overlapping segments in the current window which are the
        final address ranges that can be tested. The BSP executes the
        test first and lets each AP execute the test one by one. Once

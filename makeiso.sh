@@ -37,9 +37,9 @@ cd cd
 echo -e "There is nothing to do here\r\r\nMemtest86+ is located on the bootsector of this CD\r\r\n" > README.TXT
 echo -e "Just boot from this CD and Memtest86+ will launch" >> README.TXT
 
-genisoimage -A "MKISOFS 1.1.2" -p "Memtest86+ 5.01" -publisher "Samuel D. <sdemeule@memtest.org>" -b boot/memtest.img -c boot/boot.catalog -V "MT501" -o memtest.iso .
-mv memtest.iso ../mt501.iso
+genisoimage -A "MKISOFS 1.1.2" -p "Memtest86+ 5.31b" -publisher "Samuel D. <memtest@memtest.org>" -b boot/memtest.img -c boot/boot.catalog -V "MT531" -o memtest.iso .
+mv memtest.iso ../mt531b.iso
 cd ..
 rm -rf cd
 
-echo "Done! Memtest86+ 5.01 ISO is mt501.iso"
+echo "Done! Memtest86+ 5.31b ISO is mt501.iso"

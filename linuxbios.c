@@ -19,7 +19,7 @@ static unsigned long ip_compute_csum(void *addr, unsigned long length)
 		 */
 		buffer = 0;
 		ptr = addr;
-		memmove(&buffer, ptr, 1);
+		mt86_memmove(&buffer, ptr, 1);
 		sum += buffer;
 		if (sum > 0xFFFF)
 			sum -= 0xFFFF;
@@ -44,7 +44,7 @@ static unsigned long ip_compute_csum(void *addr, unsigned long length)
 		 */
 		buffer = 0;
 		ptr = addr;
-		memmove(&buffer, ptr, 1);
+		mt86_memmove(&buffer, ptr, 1);
 		sum += buffer;
 		if (sum > 0xFFFF)
 			sum -= 0xFFFF;
@@ -79,7 +79,7 @@ static struct lb_header * __find_lb_table(unsigned long start, unsigned long end
 	for(addr = start; addr < end; addr += 16) {
 		struct lb_header *head = (struct lb_header *)addr;
 		struct lb_record *recs = (struct lb_record *)(addr + sizeof(*head));
-		if (memcmp(head->signature, "LBIO", 4) != 0)
+		if (mt86_memcmp(head->signature, "LBIO", 4) != 0)
 			continue;
 		if (head->header_bytes != sizeof(*head))
 			continue;
